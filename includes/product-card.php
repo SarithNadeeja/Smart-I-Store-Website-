@@ -1,0 +1,58 @@
+<?php
+/**
+ * @var array $phone Product row from store
+ * @var int $i Optional index for animation delay
+ */
+$i = $i ?? 0;
+$brandName = trim($phone['brand'] ?? '');
+$brandAttr = htmlspecialchars($brandName, ENT_QUOTES, 'UTF-8');
+$brandId = (int) ($phone['brand_id'] ?? 0);
+$modelName = trim($phone['model'] ?? '');
+$modelAttr = htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8');
+$categoryId = (int) ($phone['category_id'] ?? 0);
+$stockStatus = store_normalize_stock_status($phone['stock_status'] ?? 'in_stock');
+$delay = ($i % 4) * 0.08;
+$cardHidden = !empty($product_card_hidden ?? false);
+$hasImage = !empty($phone['image']);
+$imgUrl = $hasImage ? upload_url($phone['image']) : '';
+$detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
+?>
+<article class="product-card glass-card reveal-up<?php echo $cardHidden ? ' is-hidden' : ''; ?>"
+         data-brand="<?php echo $brandAttr; ?>"
+         data-brand-id="<?php echo $brandId; ?>"
+         data-model="<?php echo $modelAttr; ?>"
+         data-stock="<?php echo htmlspecialchars($stockStatus, ENT_QUOTES, 'UTF-8'); ?>"
+         data-category-id="<?php echo $categoryId; ?>"
+         data-price="<?php echo (float) ($phone['price'] ?? 0); ?>"
+         data-delay="<?php echo $delay; ?>">
+    <?php if (!empty($phone['tag'])): ?>
+    <span class="product-tag"><?php echo htmlspecialchars($phone['tag']); ?></span>
+    <?php endif; ?>
+    <?php if ($stockStatus !== 'in_stock'): ?>
+    <span class="product-stock product-stock--<?php echo htmlspecialchars($stockStatus); ?>">
+        <?php echo htmlspecialchars($phone['stock_label'] ?? ''); ?>
+    </span>
+    <?php endif; ?>
+    <div class="product-image" style="--product-accent: <?php echo htmlspecialchars($phone['color'] ?? '#333'); ?>">
+        <?php if ($hasImage): ?>
+        <img class="product-image-photo" src="<?php echo htmlspecialchars($imgUrl); ?>" alt="<?php echo htmlspecialchars($phone['name']); ?>" loading="lazy">
+        <?php else: ?>
+        <div class="product-image-placeholder" role="img" aria-label="<?php echo htmlspecialchars($phone['name']); ?>">
+            <?php if (!empty($phone['brand'])): ?>
+            <span class="product-brand"><?php echo htmlspecialchars($phone['brand']); ?></span>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+    <div class="product-info">
+        <h3 class="product-name"><?php echo htmlspecialchars($phone['name']); ?></h3>
+        <?php if (!empty($phone['meta'])): ?>
+        <p class="product-meta"><?php echo htmlspecialchars($phone['meta']); ?></p>
+        <?php endif; ?>
+        <p class="product-price">Rs. <?php echo number_format($phone['price'], 0); ?></p>
+        <div class="product-actions">
+            <a href="<?php echo htmlspecialchars($detailUrl); ?>" class="btn btn-primary btn-sm">Buy Now</a>
+            <a href="<?php echo htmlspecialchars($detailUrl); ?>" class="btn btn-ghost btn-sm">View</a>
+        </div>
+    </div>
+</article>

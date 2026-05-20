@@ -1,0 +1,156 @@
+﻿<?php
+require_once __DIR__ . '/includes/config.php';
+$show_intro = intro_video_exists();
+$page_title = 'Home';
+$body_class = 'page-home' . ($show_intro ? ' has-intro-overlay' : '');
+$extra_js = $show_intro ? [asset_url('js/hero-intro.js')] : [];
+$intro_reload_skip = $show_intro;
+require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/products-data.php';
+require_once __DIR__ . '/includes/icons.php';
+require_once __DIR__ . '/includes/navbar.php';
+?>
+
+<main>
+    <?php require_once __DIR__ . '/includes/hero-experience.php'; ?>
+
+    <!-- Featured Phones -->
+    <section class="section section-white" id="featured">
+        <div class="container">
+            <div class="section-header reveal-up">
+                <span class="section-label">Featured</span>
+                <h2 class="section-title">Flagship Selection</h2>
+                <p class="section-desc">Hand-picked devices that define the premium mobile experience.</p>
+            </div>
+            <div class="product-grid">
+                <?php if ($featured_phones): ?>
+                <?php foreach ($featured_phones as $i => $phone): ?>
+                <?php include __DIR__ . '/includes/product-card.php'; ?>
+                <?php endforeach; ?>
+                <?php else: ?>
+                <p class="section-desc">No featured phones yet. Add items in the <a href="<?php echo base_url('admin/'); ?>">admin panel</a>.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Categories -->
+    <section class="section section-gray" id="categories">
+        <div class="container">
+            <div class="section-header reveal-up">
+                <span class="section-label">Shop by Category</span>
+                <h2 class="section-title">Find Your Perfect Device</h2>
+            </div>
+            <div class="category-grid">
+                <?php if (!$categories): ?>
+                <p class="section-desc">No categories yet. Add them in the <a href="<?php echo base_url('admin/categories.php'); ?>">admin panel</a>.</p>
+                <?php endif; ?>
+                <?php foreach ($categories as $i => $cat): ?>
+                <a href="<?php echo page_url('products.php?category=' . (int) $cat['id']); ?>" class="category-card glass-card reveal-up" data-delay="<?php echo $i * 0.08; ?>">
+                    <span class="category-icon"><?php echo icon($cat['icon']); ?></span>
+                    <h3 class="category-title"><?php echo htmlspecialchars($cat['title']); ?></h3>
+                    <p class="category-desc"><?php echo htmlspecialchars($cat['desc']); ?></p>
+                    <span class="category-count"><?php echo htmlspecialchars($cat['count']); ?></span>
+                    <span class="category-arrow"><?php echo icon('arrow-right'); ?></span>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why Choose Us -->
+    <section class="section section-yellow" id="why-us">
+        <div class="container">
+            <div class="section-header section-header-center reveal-up">
+                <span class="section-label">Why SmartIStore</span>
+                <h2 class="section-title">The Premium Difference</h2>
+                <p class="section-desc">More than a store — a destination for discerning tech enthusiasts.</p>
+            </div>
+            <div class="features-grid">
+                <?php foreach ($why_choose_us as $i => $feature): ?>
+                <div class="feature-card reveal-up" data-delay="<?php echo $i * 0.1; ?>">
+                    <span class="feature-icon"><?php echo icon($feature['icon']); ?></span>
+                    <h3 class="feature-title"><?php echo htmlspecialchars($feature['title']); ?></h3>
+                    <p class="feature-desc"><?php echo htmlspecialchars($feature['desc']); ?></p>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+
+    <!-- About preview -->
+    <section class="section section-gray" id="about">
+        <div class="container">
+            <div class="about-preview reveal-up">
+                <div class="about-preview__content">
+                    <span class="section-label">About Us</span>
+                    <h2 class="section-title">Your trusted mobile partner in Bandarawela</h2>
+                    <p class="section-desc"><?php echo htmlspecialchars(SITE_TAGLINE); ?>. Visit our store for repairs, new devices, and accessories — with honest advice and genuine products.</p>
+                    <a href="<?php echo page_url('about.php'); ?>" class="btn btn-primary">Learn more about us</a>
+                </div>
+                <div class="about-preview__card glass-card" aria-hidden="true">
+                    <p class="about-preview__address"><a href="<?php echo htmlspecialchars(SITE_MAP_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars(SITE_ADDRESS); ?></a></p>
+                    <p class="about-preview__phone"><?php echo htmlspecialchars(SITE_PHONE); ?></p>
+                </div>
+            </div>
+            <?php
+            $marquee_brands = store_get_brand_names();
+            require __DIR__ . '/includes/brands-marquee.php';
+            ?>
+        </div>
+    </section>
+
+    <!-- Contact -->
+    <section class="section section-gray" id="contact">
+        <div class="container contact-grid">
+            <div class="contact-info reveal-up">
+                <span class="section-label">Get in Touch</span>
+                <h2 class="section-title">Visit Our Store</h2>
+                <p class="section-desc">Experience devices in person or reach out — we're here to help.</p>
+                <ul class="contact-details">
+                    <li>
+                        <strong>Address</strong>
+                        <a href="<?php echo htmlspecialchars(SITE_MAP_URL); ?>" target="_blank" rel="noopener noreferrer"><?php echo htmlspecialchars(SITE_ADDRESS); ?></a>
+                    </li>
+                    <li>
+                        <strong>Phone</strong>
+                        <a href="tel:<?php echo preg_replace('/\D/', '', SITE_WHATSAPP_1); ?>"><?php echo htmlspecialchars(SITE_PHONE); ?></a>
+                    </li>
+                    <li>
+                        <strong>Email</strong>
+                        <a href="mailto:<?php echo SITE_EMAIL; ?>"><?php echo htmlspecialchars(SITE_EMAIL); ?></a>
+                    </li>
+                    <li>
+                        <strong>Hours</strong>
+                        <span>Mon – Sat: 10am – 8pm · Sun: 11am – 6pm</span>
+                    </li>
+                </ul>
+            </div>
+            <form class="contact-form glass-card reveal-up" action="<?php echo page_url('contact.php'); ?>" method="get">
+                <h3 class="form-title">Send a Message</h3>
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" placeholder="John Doe" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="you@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="message">Message</label>
+                    <textarea id="message" name="message" rows="4" placeholder="How can we help?" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Send Message</button>
+            </form>
+            <?php require __DIR__ . '/includes/map-embed.php'; ?>
+
+        </div>
+    </section>
+</main>
+
+<?php
+require_once __DIR__ . '/includes/footer.php';
+require_once __DIR__ . '/includes/scripts.php';
+?>
+</body>
+</html>
