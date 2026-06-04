@@ -57,6 +57,36 @@ if (is_file(__DIR__ . '/config.local.php')) {
 if (!defined('BASE_PATH')) {
     define('BASE_PATH', smartistore_detect_base_path());
 }
+
+/** Session cookie path must match BASE_PATH so admin/POS forms keep CSRF tokens */
+function smartistore_session_cookie_path(): string
+{
+    $base = rtrim(BASE_PATH, '/');
+
+    return $base === '' ? '/' : $base . '/';
+}
+
+function smartistore_session_start(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443);
+
+    session_name('smartistore_sess');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => smartistore_session_cookie_path(),
+        'domain' => '',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
+
 /** PostgreSQL — hosting */
 define('DB_HOST', '127.0.0.1');
 define('DB_PORT', '5432');

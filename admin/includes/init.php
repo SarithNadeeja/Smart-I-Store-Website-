@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 
-session_start();
-
 require_once dirname(__DIR__, 2) . '/includes/config.php';
+smartistore_session_start();
 require_once dirname(__DIR__, 2) . '/includes/database.php';
 require_once dirname(__DIR__, 2) . '/includes/store.php';
 require_once dirname(__DIR__, 2) . '/includes/uploads.php';
@@ -46,9 +45,17 @@ function admin_csrf_token(): string
 
 function admin_csrf_verify(): void
 {
-    $token = $_POST['csrf'] ?? '';
-    if ($token === '' || !hash_equals(admin_csrf_token(), $token)) {
-        throw new RuntimeException('Invalid security token. Please try again.');
+    $submitted = (string) ($_POST['csrf'] ?? '');
+    $expected = (string) ($_SESSION['admin_csrf'] ?? '');
+
+    if ($submitted === '' && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0 && $_POST === []) {
+        throw new RuntimeException(
+            'Upload or form data was too large for the server. Use smaller images or ask your host to increase post_max_size and upload_max_filesize.'
+        );
+    }
+
+    if ($submitted === '' || $expected === '' || !hash_equals($expected, $submitted)) {
+        throw new RuntimeException('Invalid security token. Please refresh the page and try again.');
     }
 }
 
@@ -142,6 +149,7 @@ function admin_attempt_login(string $username, string $password): bool
 
     $_SESSION['admin_user_id'] = (int) $user['id'];
     $_SESSION['admin_username'] = $user['username'];
+    $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
 
     return true;
 }

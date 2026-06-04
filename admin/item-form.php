@@ -3,6 +3,8 @@
 require_once __DIR__ . '/includes/init.php';
 require_once __DIR__ . '/includes/layout.php';
 
+admin_require_setup_complete();
+
 $pdo = db();
 $id = 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

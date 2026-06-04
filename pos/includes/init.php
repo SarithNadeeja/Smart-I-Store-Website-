@@ -2,9 +2,8 @@
 
 declare(strict_types=1);
 
-session_start();
-
 require_once __DIR__ . '/db.php';
+smartistore_session_start();
 require_once __DIR__ . '/functions.php';
 
 function pos_panel_url(string $path = ''): string
@@ -50,9 +49,17 @@ function pos_csrf_token(): string
 
 function pos_csrf_verify(): void
 {
-    $token = $_POST['csrf'] ?? '';
-    if ($token === '' || !hash_equals(pos_csrf_token(), $token)) {
-        throw new RuntimeException('Invalid security token. Please try again.');
+    $submitted = (string) ($_POST['csrf'] ?? '');
+    $expected = (string) ($_SESSION['pos_csrf'] ?? '');
+
+    if ($submitted === '' && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0 && $_POST === []) {
+        throw new RuntimeException(
+            'Upload or form data was too large for the server. Use smaller images or ask your host to increase post_max_size and upload_max_filesize.'
+        );
+    }
+
+    if ($submitted === '' || $expected === '' || !hash_equals($expected, $submitted)) {
+        throw new RuntimeException('Invalid security token. Please refresh the page and try again.');
     }
 }
 
@@ -149,6 +156,7 @@ function pos_attempt_login(string $username, string $password): bool
     $_SESSION['pos_staff_id'] = (int) $user['id'];
     $_SESSION['pos_username'] = $user['username'];
     $_SESSION['pos_staff_name'] = $user['name'];
+    $_SESSION['pos_csrf'] = bin2hex(random_bytes(32));
     pos_audit((int) $user['id'], 'login', 'staff', (int) $user['id'], 'POS login');
 
     return true;
