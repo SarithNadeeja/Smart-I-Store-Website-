@@ -40,13 +40,26 @@ function admin_csrf_token(): string
     if (empty($_SESSION['admin_csrf'])) {
         $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
     }
+
+    smartistore_set_csrf_cookie('admin_csrf', $_SESSION['admin_csrf']);
+
     return $_SESSION['admin_csrf'];
+}
+
+function admin_csrf_submitted(): string
+{
+    if (isset($_POST['admin_token'])) {
+        return trim((string) $_POST['admin_token']);
+    }
+
+    return trim((string) ($_POST['csrf'] ?? ''));
 }
 
 function admin_csrf_verify(): void
 {
-    $submitted = (string) ($_POST['csrf'] ?? '');
+    $submitted = admin_csrf_submitted();
     $expected = (string) ($_SESSION['admin_csrf'] ?? '');
+    $cookieToken = (string) ($_COOKIE['admin_csrf'] ?? '');
 
     if ($submitted === '' && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0 && $_POST === []) {
         throw new RuntimeException(
@@ -54,9 +67,27 @@ function admin_csrf_verify(): void
         );
     }
 
-    if ($submitted === '' || $expected === '' || !hash_equals($expected, $submitted)) {
-        throw new RuntimeException('Invalid security token. Please refresh the page and try again.');
+    if ($submitted !== '' && $expected !== '' && hash_equals($expected, $submitted)) {
+        return;
     }
+
+    if ($submitted !== '' && $cookieToken !== '' && hash_equals($cookieToken, $submitted)) {
+        $_SESSION['admin_csrf'] = $submitted;
+        smartistore_set_csrf_cookie('admin_csrf', $submitted);
+
+        return;
+    }
+
+    throw new RuntimeException(
+        'Invalid security token. Log out, log in again, then open Add item from the same URL (e.g. always use localhost or always use 127.0.0.1 — not both).'
+    );
+}
+
+function admin_csrf_field(): void
+{
+    echo '<input type="hidden" name="admin_token" value="'
+        . htmlspecialchars(admin_csrf_token(), ENT_QUOTES, 'UTF-8')
+        . '" autocomplete="off">';
 }
 
 function admin_flash(string $type, string $message): void
@@ -147,9 +178,11 @@ function admin_attempt_login(string $username, string $password): bool
         return false;
     }
 
+    session_regenerate_id(true);
     $_SESSION['admin_user_id'] = (int) $user['id'];
     $_SESSION['admin_username'] = $user['username'];
     $_SESSION['admin_csrf'] = bin2hex(random_bytes(32));
+    smartistore_set_csrf_cookie('admin_csrf', $_SESSION['admin_csrf']);
 
     return true;
 }
@@ -161,6 +194,7 @@ function admin_logout(): void
         $p = session_get_cookie_params();
         setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'], $p['secure'], $p['httponly']);
     }
+    setcookie('admin_csrf', '', time() - 42000, '/', '', smartistore_is_https(), true);
     session_destroy();
 }
 

@@ -58,33 +58,52 @@ if (!defined('BASE_PATH')) {
     define('BASE_PATH', smartistore_detect_base_path());
 }
 
-/** Session cookie path must match BASE_PATH so admin/POS forms keep CSRF tokens */
-function smartistore_session_cookie_path(): string
+function smartistore_is_https(): bool
 {
-    $base = rtrim(BASE_PATH, '/');
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+    if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string) $_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+        return true;
+    }
 
-    return $base === '' ? '/' : $base . '/';
+    return (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
 }
 
+/** Session cookie uses site-wide path so admin works in subfolders and at domain root */
 function smartistore_session_start(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
     }
 
-    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443);
-
     session_name('smartistore_sess');
     session_set_cookie_params([
         'lifetime' => 0,
-        'path' => smartistore_session_cookie_path(),
+        'path' => '/',
         'domain' => '',
-        'secure' => $secure,
+        'secure' => smartistore_is_https(),
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
     session_start();
+}
+
+/** Backup CSRF cookie (path /) when PHP session is lost between GET and POST */
+function smartistore_set_csrf_cookie(string $name, string $token): void
+{
+    if (headers_sent() || $token === '') {
+        return;
+    }
+
+    setcookie($name, $token, [
+        'expires' => 0,
+        'path' => '/',
+        'domain' => '',
+        'secure' => smartistore_is_https(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
 }
 
 /** PostgreSQL — hosting */

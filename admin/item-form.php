@@ -246,7 +246,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             <img src="<?php echo htmlspecialchars(upload_url($img['image_path'])); ?>" alt="">
             <form method="post" class="admin-inline-form"
                   action="<?php echo htmlspecialchars(admin_url('item-form.php?id=' . $id)); ?>">
-                <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
+                <?php admin_csrf_field(); ?>
                 <input type="hidden" name="item_id" value="<?php echo (int) $id; ?>">
                 <input type="hidden" name="action" value="delete_sub_image">
                 <input type="hidden" name="image_id" value="<?php echo (int) $img['id']; ?>">
@@ -260,7 +260,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
 
     <form method="post" enctype="multipart/form-data" class="admin-form" id="item-form"
           action="<?php echo htmlspecialchars(admin_url('item-form.php' . ($id > 0 ? '?id=' . $id : ''))); ?>">
-        <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
+        <?php admin_csrf_field(); ?>
         <?php if ($id > 0): ?>
         <input type="hidden" name="item_id" value="<?php echo (int) $id; ?>">
         <?php endif; ?>

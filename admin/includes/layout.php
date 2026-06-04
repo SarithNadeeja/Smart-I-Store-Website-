@@ -3,6 +3,9 @@
 function admin_render_header(string $title, string $active = ''): void
 {
     $user = admin_require_setup_complete();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        admin_csrf_token();
+    }
     $flash = admin_consume_flash();
     $nav = [
         'dashboard' => ['Dashboard', 'dashboard.php', 'dashboard'],

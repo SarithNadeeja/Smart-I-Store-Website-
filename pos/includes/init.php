@@ -44,13 +44,26 @@ function pos_csrf_token(): string
     if (empty($_SESSION['pos_csrf'])) {
         $_SESSION['pos_csrf'] = bin2hex(random_bytes(32));
     }
+
+    smartistore_set_csrf_cookie('pos_csrf', $_SESSION['pos_csrf']);
+
     return $_SESSION['pos_csrf'];
+}
+
+function pos_csrf_submitted(): string
+{
+    if (isset($_POST['pos_token'])) {
+        return trim((string) $_POST['pos_token']);
+    }
+
+    return trim((string) ($_POST['csrf'] ?? ''));
 }
 
 function pos_csrf_verify(): void
 {
-    $submitted = (string) ($_POST['csrf'] ?? '');
+    $submitted = pos_csrf_submitted();
     $expected = (string) ($_SESSION['pos_csrf'] ?? '');
+    $cookieToken = (string) ($_COOKIE['pos_csrf'] ?? '');
 
     if ($submitted === '' && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0 && $_POST === []) {
         throw new RuntimeException(
@@ -58,9 +71,18 @@ function pos_csrf_verify(): void
         );
     }
 
-    if ($submitted === '' || $expected === '' || !hash_equals($expected, $submitted)) {
-        throw new RuntimeException('Invalid security token. Please refresh the page and try again.');
+    if ($submitted !== '' && $expected !== '' && hash_equals($expected, $submitted)) {
+        return;
     }
+
+    if ($submitted !== '' && $cookieToken !== '' && hash_equals($cookieToken, $submitted)) {
+        $_SESSION['pos_csrf'] = $submitted;
+        smartistore_set_csrf_cookie('pos_csrf', $submitted);
+
+        return;
+    }
+
+    throw new RuntimeException('Invalid security token. Please refresh the page and try again.');
 }
 
 function pos_flash(string $type, string $message): void
@@ -153,10 +175,12 @@ function pos_attempt_login(string $username, string $password): bool
         return false;
     }
 
+    session_regenerate_id(true);
     $_SESSION['pos_staff_id'] = (int) $user['id'];
     $_SESSION['pos_username'] = $user['username'];
     $_SESSION['pos_staff_name'] = $user['name'];
     $_SESSION['pos_csrf'] = bin2hex(random_bytes(32));
+    smartistore_set_csrf_cookie('pos_csrf', $_SESSION['pos_csrf']);
     pos_audit((int) $user['id'], 'login', 'staff', (int) $user['id'], 'POS login');
 
     return true;
