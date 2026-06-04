@@ -23,8 +23,11 @@ html.is-site-loading body {
     pointer-events: none;
 }
 </style>
-<?php foreach ($preload_videos as $vid): ?>
-<link rel="preload" href="<?php echo htmlspecialchars($vid['url']); ?>" as="video" type="<?php echo htmlspecialchars($vid['type']); ?>">
+<?php foreach ($preload_videos as $i => $vid): ?>
+<link rel="preload" href="<?php echo htmlspecialchars($vid['url']); ?>" as="video" type="<?php echo htmlspecialchars($vid['type']); ?>"<?php echo $i === 0 ? ' fetchpriority="high"' : ''; ?>>
+<?php if (!empty($vid['fallback_url'])): ?>
+<link rel="preload" href="<?php echo htmlspecialchars($vid['fallback_url']); ?>" as="video" type="<?php echo htmlspecialchars($vid['fallback_type'] ?? 'video/mp4'); ?>">
+<?php endif; ?>
 <?php endforeach; ?>
 <script>
 document.documentElement.classList.add('is-site-loading');

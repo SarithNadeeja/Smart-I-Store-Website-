@@ -1,5 +1,5 @@
 /**
- * Full-page loader — waits for window load, fonts, and intro + hero videos.
+ * Full-page loader — waits for window load, fonts, and hero banner video.
  */
 (function () {
     'use strict';
@@ -97,36 +97,67 @@
 
     function buildVideoJobs(videos) {
         var jobs = [];
-        var introDone = false;
-        var heroDone = false;
 
         videos.forEach(function (item) {
-            if (!item || !item.url) return;
-            var job = { url: item.url, type: item.type || '' };
-            if (item.role === 'intro' && !introDone) {
-                introDone = true;
-                var sources = [{ url: item.url, type: item.type || 'video/webm' }];
-                if (item.fallback_url) {
-                    sources.push({
-                        url: item.fallback_url,
-                        type: item.fallback_type || 'video/mp4'
-                    });
-                }
-                jobs.push({ role: 'intro', sources: sources });
-            } else if (item.role === 'hero' && !heroDone) {
-                heroDone = true;
-                jobs.push(job);
+            if (!item || !item.url || item.role !== 'hero') return;
+            var sources = [{ url: item.url, type: item.type || 'video/webm' }];
+            if (item.fallback_url) {
+                sources.push({
+                    url: item.fallback_url,
+                    type: item.fallback_type || 'video/mp4'
+                });
             }
+            jobs.push({ role: 'hero', sources: sources });
         });
 
         return jobs;
+    }
+
+    function warmHeroVideoElement() {
+        return new Promise(function (resolve) {
+            var hero = document.getElementById('hero-source-video');
+            if (!hero) {
+                resolve();
+                return;
+            }
+
+            var settled = false;
+            function done() {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                resolve();
+            }
+
+            var timer = setTimeout(done, VIDEO_TIMEOUT_MS);
+
+            hero.muted = true;
+            hero.defaultMuted = true;
+            hero.volume = 0;
+            hero.setAttribute('muted', '');
+            hero.playsInline = true;
+            hero.preload = 'auto';
+
+            hero.addEventListener('canplaythrough', done, { once: true });
+            hero.addEventListener('error', done, { once: true });
+            hero.addEventListener('loadeddata', function () {
+                if (hero.readyState >= 3) done();
+            }, { once: true });
+
+            if (hero.readyState >= 3) {
+                done();
+                return;
+            }
+
+            hero.load();
+        });
     }
 
     function preloadAllVideos(videos) {
         var jobs = buildVideoJobs(videos);
         if (!jobs.length) return Promise.resolve();
 
-        setLabel('Preparing experience…');
+        setLabel('Loading banner video…');
 
         return Promise.all(
             jobs.map(function (job) {
@@ -151,10 +182,6 @@
 
             window.dispatchEvent(new CustomEvent('site:ready'));
 
-            if (document.getElementById('intro-experience') && !document.documentElement.classList.contains('skip-intro-on-reload')) {
-                document.body.classList.add('has-intro-overlay');
-            }
-
             window.setTimeout(function () {
                 if (loader.parentNode) loader.parentNode.removeChild(loader);
             }, 600);
@@ -170,7 +197,8 @@
         Promise.all([
             waitWindowLoad(),
             waitFonts(),
-            preloadAllVideos(videos)
+            preloadAllVideos(videos),
+            warmHeroVideoElement()
         ])
             .then(finish)
             .catch(finish);

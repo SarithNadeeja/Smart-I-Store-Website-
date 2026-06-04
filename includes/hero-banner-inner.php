@@ -6,7 +6,7 @@ if (!isset($hero_video_url)) {
     $hero_video_url = asset_url(HERO_VIDEO);
 }
 $hero_video_exists = file_exists($hero_video_file);
-$hero_autoplay = $hero_autoplay ?? false;
+$hero_autoplay = $hero_autoplay ?? true;
 ?>
 <div class="hero-banner__bg" aria-hidden="true">
     <div class="hero-banner__bg-base"></div>

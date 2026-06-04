@@ -16,10 +16,6 @@
         const video = document.getElementById('hero-source-video');
         const canvas = document.getElementById('hero-chroma-canvas');
         const stage = document.getElementById('hero-stage');
-        const hasIntro = document.body.classList.contains('has-intro-overlay');
-        const introAlreadyDone =
-            document.body.classList.contains('is-intro-complete') ||
-            document.documentElement.classList.contains('skip-intro-on-reload');
         const heroEl = document.getElementById('hero');
         if (!video || !canvas || !stage) return;
 
@@ -157,17 +153,18 @@
             }
         }
 
+        function beginHero() {
+            if (heroEl) heroEl.classList.add('is-ready');
+            startPlayback();
+        }
+
         function onReady() {
             resize();
             drawFrame();
-            if (hasIntro && !introAlreadyDone) {
-                window.addEventListener('hero:revealed', function () {
-                    if (heroEl) heroEl.classList.add('is-ready');
-                    startPlayback();
-                }, { once: true });
+            if (document.documentElement.classList.contains('is-site-loaded')) {
+                beginHero();
             } else {
-                if (heroEl) heroEl.classList.add('is-ready');
-                startPlayback();
+                window.addEventListener('site:ready', beginHero, { once: true });
             }
         }
 

@@ -1,13 +1,8 @@
 ﻿<?php
 require_once __DIR__ . '/includes/config.php';
-$show_intro = intro_video_exists();
 $page_title = 'Home';
-$body_class = 'page-home' . ($show_intro ? ' has-intro-overlay' : '');
+$body_class = 'page-home';
 $extra_js = [asset_url('js/category-carousel.js')];
-if ($show_intro) {
-    $extra_js[] = asset_url('js/hero-intro.js');
-}
-$intro_reload_skip = $show_intro;
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/products-data.php';
 require_once __DIR__ . '/includes/icons.php';

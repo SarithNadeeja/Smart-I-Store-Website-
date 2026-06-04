@@ -23,9 +23,10 @@ define('POWERED_BY_LABEL', 'infersioai.com');
 /** Main hero video (after intro scroll) */
 define('HERO_VIDEO', 'videos/website.webm');
 
-/** Scroll-scrub intro video */
+/** Intro overlay disabled — homepage goes straight to hero banner */
+define('INTRO_ENABLED', false);
 define('INTRO_VIDEO', 'videos/intro.webm');
-define('INTRO_TRIM_START', 2); // seconds to skip from start
+define('INTRO_TRIM_START', 2);
 
 /**
  * Derive /YourFolder from DOCUMENT_ROOT vs project root (works on XAMPP and cPanel).
@@ -91,7 +92,11 @@ function is_current_page(string $page): bool
 
 function intro_video_exists(): bool
 {
+    if (!INTRO_ENABLED) {
+        return false;
+    }
     $base = __DIR__ . '/../assets/videos/';
+
     return file_exists($base . 'intro.webm')
         || file_exists($base . 'intro.mp4');
 }
@@ -102,40 +107,26 @@ function hero_video_exists(): bool
     return file_exists($base . 'website.webm');
 }
 
-/** Intro + hero URLs for the site-wide preload loader */
+/** Hero banner video for the site-wide preload loader */
 function site_preload_videos(): array
 {
+    if (!hero_video_exists()) {
+        return [];
+    }
+
     $base = __DIR__ . '/../assets/videos/';
-    $list = [];
+    $entry = [
+        'role' => 'hero',
+        'url' => asset_url(HERO_VIDEO),
+        'type' => 'video/webm',
+    ];
 
-    if (file_exists($base . 'intro.webm')) {
-        $entry = [
-            'role' => 'intro',
-            'url' => asset_url('videos/intro.webm'),
-            'type' => 'video/webm',
-        ];
-        if (file_exists($base . 'intro.mp4')) {
-            $entry['fallback_url'] = asset_url('videos/intro.mp4');
-            $entry['fallback_type'] = 'video/mp4';
-        }
-        $list[] = $entry;
-    } elseif (file_exists($base . 'intro.mp4')) {
-        $list[] = [
-            'role' => 'intro',
-            'url' => asset_url('videos/intro.mp4'),
-            'type' => 'video/mp4',
-        ];
+    if (file_exists($base . 'website.mp4')) {
+        $entry['fallback_url'] = asset_url('videos/website.mp4');
+        $entry['fallback_type'] = 'video/mp4';
     }
 
-    if (hero_video_exists()) {
-        $list[] = [
-            'role' => 'hero',
-            'url' => asset_url(HERO_VIDEO),
-            'type' => 'video/webm',
-        ];
-    }
-
-    return $list;
+    return [$entry];
 }
 
 function site_logo_exists(): bool
