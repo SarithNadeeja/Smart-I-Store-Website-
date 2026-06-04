@@ -1,0 +1,16 @@
+# PHP upload limits for admin product images (Apache + mod_php / AllowOverride)
+<IfModule mod_php.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+    php_value max_file_uploads 25
+    php_value max_input_time 300
+    php_value max_execution_time 300
+</IfModule>
+
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+    php_value max_file_uploads 25
+    php_value max_input_time 300
+    php_value max_execution_time 300
+</IfModule>

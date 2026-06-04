@@ -61,11 +61,7 @@ function admin_csrf_verify(): void
     $expected = (string) ($_SESSION['admin_csrf'] ?? '');
     $cookieToken = (string) ($_COOKIE['admin_csrf'] ?? '');
 
-    if ($submitted === '' && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0 && $_POST === []) {
-        throw new RuntimeException(
-            'Upload or form data was too large for the server. Use smaller images or ask your host to increase post_max_size and upload_max_filesize.'
-        );
-    }
+    uploads_assert_post_accepted();
 
     if ($submitted !== '' && $expected !== '' && hash_equals($expected, $submitted)) {
         return;

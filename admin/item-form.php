@@ -39,6 +39,7 @@ $allModels = $pdo->query(
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        uploads_assert_post_accepted();
         admin_csrf_verify();
 
         if (($_POST['action'] ?? '') === 'delete_sub_image') {
@@ -163,6 +164,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
+        $uploadBytes = 0;
+        if (!empty($_FILES['main_image']['name']) && (int) ($_FILES['main_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+            $uploadBytes += (int) ($_FILES['main_image']['size'] ?? 0);
+        }
+        foreach ($subFiles as $file) {
+            $uploadBytes += (int) ($file['size'] ?? 0);
+        }
+        if ($uploadBytes > UPLOAD_MAX_TOTAL_BYTES) {
+            throw new RuntimeException(
+                'Total upload size is too large (max '
+                . (int) (UPLOAD_MAX_TOTAL_BYTES / 1024 / 1024)
+                . ' MB per save). Upload fewer images or use smaller files.'
+            );
+        }
+
         if ($subFiles) {
             if ($id <= 0) {
                 throw new RuntimeException('Save the item first, then add sub images.');
@@ -355,7 +371,8 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             <?php if (!empty($item['main_image'])): ?>
             <img class="admin-preview" src="<?php echo htmlspecialchars(upload_url($item['main_image'])); ?>" alt="">
             <?php endif; ?>
-            <input type="file" id="main_image" name="main_image" accept="image/*">
+            <input type="file" id="main_image" name="main_image" accept="image/*" data-upload-max-mb="15">
+            <p class="admin-field-note">Max 15 MB per image. Server allows up to <?php echo htmlspecialchars(ini_get('upload_max_filesize') ?: '?'); ?> per file, <?php echo htmlspecialchars(ini_get('post_max_size') ?: '?'); ?> per form.</p>
         </div>
 
         <div class="admin-phone-extras">
@@ -435,8 +452,8 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                 <small>(<?php echo $subImageCount; ?>/<?php echo $maxSubImages; ?> max)</small>
             </label>
             <?php if ($subSlotsLeft > 0): ?>
-            <input type="file" id="sub_images" name="sub_images[]" accept="image/*" multiple data-max="<?php echo $subSlotsLeft; ?>">
-            <p class="admin-field-note">You can add up to <?php echo $subSlotsLeft; ?> more image<?php echo $subSlotsLeft === 1 ? '' : 's'; ?>.</p>
+            <input type="file" id="sub_images" name="sub_images[]" accept="image/*" multiple data-max="<?php echo $subSlotsLeft; ?>" data-upload-max-mb="15">
+            <p class="admin-field-note">You can add up to <?php echo $subSlotsLeft; ?> more image<?php echo $subSlotsLeft === 1 ? '' : 's'; ?>. Keep each file under 15 MB.</p>
             <?php else: ?>
             <p class="admin-field-note">Maximum of <?php echo $maxSubImages; ?> sub images reached. Remove one to upload another.</p>
             <?php endif; ?>
@@ -513,6 +530,44 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     modelSelect.addEventListener('change', suggestName);
     fillModels();
 
+    var MAX_FILE_MB = 15;
+    var MAX_TOTAL_MB = 48;
+
+    function uploadSizeMessage(files, label) {
+        if (!files || !files.length) return '';
+        var total = 0;
+        for (var i = 0; i < files.length; i++) {
+            var mb = files[i].size / (1024 * 1024);
+            total += files[i].size;
+            if (mb > MAX_FILE_MB) {
+                return label + ': "' + files[i].name + '" is ' + mb.toFixed(1) + ' MB (max ' + MAX_FILE_MB + ' MB per file).';
+            }
+        }
+        if (total / (1024 * 1024) > MAX_TOTAL_MB) {
+            return label + ': total size is too large (max ' + MAX_TOTAL_MB + ' MB per save).';
+        }
+        return '';
+    }
+
+    var itemForm = document.getElementById('item-form');
+    if (itemForm) {
+        itemForm.addEventListener('submit', function (e) {
+            var mainInput = document.getElementById('main_image');
+            var subInput = document.getElementById('sub_images');
+            var msg = '';
+            if (mainInput && mainInput.files) {
+                msg = uploadSizeMessage(mainInput.files, 'Main image');
+            }
+            if (!msg && subInput && subInput.files) {
+                msg = uploadSizeMessage(subInput.files, 'Sub images');
+            }
+            if (msg) {
+                e.preventDefault();
+                alert(msg);
+            }
+        });
+    }
+
     var subInput = document.getElementById('sub_images');
     if (subInput) {
         var maxAdd = parseInt(subInput.getAttribute('data-max') || '0', 10);
@@ -520,6 +575,23 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             if (maxAdd <= 0 || !this.files) return;
             if (this.files.length > maxAdd) {
                 alert('You can only add ' + maxAdd + ' more sub image(s). Maximum ' + <?php echo $maxSubImages; ?> + ' per product.');
+                this.value = '';
+                return;
+            }
+            var msg = uploadSizeMessage(this.files, 'Sub images');
+            if (msg) {
+                alert(msg);
+                this.value = '';
+            }
+        });
+    }
+
+    var mainImageInput = document.getElementById('main_image');
+    if (mainImageInput) {
+        mainImageInput.addEventListener('change', function () {
+            var msg = uploadSizeMessage(this.files, 'Main image');
+            if (msg) {
+                alert(msg);
                 this.value = '';
             }
         });

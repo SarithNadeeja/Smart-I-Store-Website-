@@ -1,5 +1,59 @@
 <?php
 
+/** Per-file limit enforced in the app (keep below server upload_max_filesize) */
+define('UPLOAD_MAX_FILE_BYTES', 15 * 1024 * 1024);
+
+/** Max combined upload size for one item form submit (main + sub images) */
+define('UPLOAD_MAX_TOTAL_BYTES', 48 * 1024 * 1024);
+
+function uploads_ini_size_bytes(string $value): int
+{
+    $value = trim($value);
+    if ($value === '') {
+        return 0;
+    }
+
+    $unit = strtolower(substr($value, -1));
+    $number = (float) $value;
+
+    return match ($unit) {
+        'g' => (int) ($number * 1024 * 1024 * 1024),
+        'm' => (int) ($number * 1024 * 1024),
+        'k' => (int) ($number * 1024),
+        default => (int) $number,
+    };
+}
+
+function uploads_post_payload_lost(): bool
+{
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        return false;
+    }
+
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+
+    return $contentLength > 0 && $_POST === [] && $_FILES === [];
+}
+
+function uploads_post_limit_message(): string
+{
+    $postMax = ini_get('post_max_size') ?: 'unknown';
+    $uploadMax = ini_get('upload_max_filesize') ?: 'unknown';
+
+    return 'Upload or form data was too large for the server (limit post_max_size='
+        . $postMax
+        . ', upload_max_filesize='
+        . $uploadMax
+        . '). Use smaller images (under 10 MB each), fewer files at once, or increase those limits in php.ini / .htaccess.';
+}
+
+function uploads_assert_post_accepted(): void
+{
+    if (uploads_post_payload_lost()) {
+        throw new RuntimeException(uploads_post_limit_message());
+    }
+}
+
 function uploads_dir(): string
 {
     $dir = dirname(__DIR__) . '/assets/uploads/items';
@@ -15,8 +69,26 @@ function uploads_save_image(array $file): ?string
         return null;
     }
 
-    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
-        throw new RuntimeException('Image upload failed.');
+    $error = (int) ($file['error'] ?? UPLOAD_ERR_OK);
+    if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+        throw new RuntimeException(
+            'Image is too large. Server limit is '
+            . (ini_get('upload_max_filesize') ?: 'unknown')
+            . ' per file. Use a smaller image or increase upload_max_filesize in PHP.'
+        );
+    }
+
+    if ($error !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Image upload failed (error code ' . $error . ').');
+    }
+
+    $size = (int) ($file['size'] ?? 0);
+    if ($size > UPLOAD_MAX_FILE_BYTES) {
+        throw new RuntimeException(
+            'Image is too large (max '
+            . (int) (UPLOAD_MAX_FILE_BYTES / 1024 / 1024)
+            . ' MB per file). Resize or compress before uploading.'
+        );
     }
 
     $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -84,8 +156,57 @@ function uploads_delete_file(?string $relativePath): void
         return;
     }
 
-    $full = dirname(__DIR__) . '/assets/uploads/' . ltrim($relativePath, '/');
+    $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
+    $full = dirname(__DIR__) . '/assets/uploads/' . $relativePath;
     if (is_file($full)) {
-        unlink($full);
+        @unlink($full);
+    }
+}
+
+/**
+ * @return list<string> Relative paths under assets/uploads/ (e.g. items/abc.jpg)
+ */
+function uploads_item_image_paths(int $itemId): array
+{
+    if ($itemId <= 0 || !db_available()) {
+        return [];
+    }
+
+    $paths = [];
+    $pdo = db();
+
+    $stmt = $pdo->prepare('SELECT main_image FROM items WHERE id = :id');
+    $stmt->execute(['id' => $itemId]);
+    $row = $stmt->fetch();
+    if ($row && trim((string) ($row['main_image'] ?? '')) !== '') {
+        $paths[] = trim((string) $row['main_image']);
+    }
+
+    $imgStmt = $pdo->prepare('SELECT image_path FROM item_images WHERE item_id = :id');
+    $imgStmt->execute(['id' => $itemId]);
+    foreach ($imgStmt->fetchAll() as $img) {
+        $path = trim((string) ($img['image_path'] ?? ''));
+        if ($path !== '') {
+            $paths[] = $path;
+        }
+    }
+
+    return array_values(array_unique($paths));
+}
+
+function uploads_delete_item_images(int $itemId): void
+{
+    foreach (uploads_item_image_paths($itemId) as $path) {
+        uploads_delete_file($path);
+    }
+}
+
+/**
+ * @param list<string> $relativePaths
+ */
+function uploads_delete_files(array $relativePaths): void
+{
+    foreach ($relativePaths as $path) {
+        uploads_delete_file($path);
     }
 }

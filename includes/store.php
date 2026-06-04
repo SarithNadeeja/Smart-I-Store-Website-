@@ -612,6 +612,35 @@ function store_get_item_sub_images(int $itemId): array
     return array_column($stmt->fetchAll(), 'image_path');
 }
 
+/**
+ * Delete a product and all uploaded images (main + sub images) from disk.
+ *
+ * @return int Number of image files removed
+ */
+function store_delete_item(int $itemId): int
+{
+    require_once __DIR__ . '/uploads.php';
+
+    if ($itemId <= 0) {
+        throw new RuntimeException('Item not found.');
+    }
+    if (!db_available()) {
+        throw new RuntimeException('Database unavailable.');
+    }
+
+    $paths = uploads_item_image_paths($itemId);
+    $stmt = db()->prepare('DELETE FROM items WHERE id = :id');
+    $stmt->execute(['id' => $itemId]);
+
+    if ($stmt->rowCount() === 0) {
+        throw new RuntimeException('Item not found.');
+    }
+
+    uploads_delete_files($paths);
+
+    return count($paths);
+}
+
 function store_dashboard_stats(): array
 {
     if (!db_available()) {

@@ -32,27 +32,15 @@ function admin_items_filter_query(array $filters = null): string
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     try {
+        uploads_assert_post_accepted();
         admin_csrf_verify();
         $id = (int) ($_POST['id'] ?? 0);
-
-        $stmt = $pdo->prepare('SELECT main_image FROM items WHERE id = :id');
-        $stmt->execute(['id' => $id]);
-        $item = $stmt->fetch();
-
-        $imgStmt = $pdo->prepare('SELECT image_path FROM item_images WHERE item_id = :id');
-        $imgStmt->execute(['id' => $id]);
-        $subImages = $imgStmt->fetchAll();
-
-        $pdo->prepare('DELETE FROM items WHERE id = :id')->execute(['id' => $id]);
-
-        if ($item) {
-            uploads_delete_file($item['main_image'] ?? '');
+        $imageCount = store_delete_item($id);
+        $msg = 'Item deleted.';
+        if ($imageCount > 0) {
+            $msg .= ' ' . $imageCount . ' image' . ($imageCount === 1 ? '' : 's') . ' removed from the server.';
         }
-        foreach ($subImages as $img) {
-            uploads_delete_file($img['image_path']);
-        }
-
-        admin_flash('success', 'Item deleted.');
+        admin_flash('success', $msg);
     } catch (Throwable $e) {
         admin_flash('error', $e->getMessage());
     }
