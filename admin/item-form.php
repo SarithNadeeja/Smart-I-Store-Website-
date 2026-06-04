@@ -441,7 +441,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             </div>
         </div>
 
-        <div class="admin-field-row" id="item-pricing-standard">
+        <div class="admin-field-row" id="item-pricing-standard"<?php echo $initialIsPhone ? ' hidden' : ''; ?>>
             <div class="admin-field">
                 <label for="price">List price (Rs.)</label>
                 <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>" required>
@@ -449,7 +449,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             </div>
         </div>
 
-        <div class="admin-field-row" id="item-sale-price-row">
+        <div class="admin-field-row" id="item-sale-price-row"<?php echo $initialIsPhone ? ' hidden' : ''; ?>>
             <div class="admin-field">
                 <label for="sale_price">Sale price (Rs.) <small>optional</small></label>
                 <input type="number" id="sale_price" name="sale_price" min="0" step="0.01"
@@ -687,9 +687,20 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         if (!categorySelect) return;
         var opt = categorySelect.options[categorySelect.selectedIndex];
         var isPhone = !!(opt && opt.getAttribute('data-is-phone') === '1');
-        if (phoneVariantsSection) phoneVariantsSection.hidden = !isPhone;
-        if (itemPricingStandard) itemPricingStandard.hidden = isPhone;
-        if (itemSalePriceRow) itemSalePriceRow.hidden = isPhone;
+        if (phoneVariantsSection) {
+            phoneVariantsSection.hidden = !isPhone;
+        }
+        if (itemPricingStandard) {
+            itemPricingStandard.hidden = isPhone;
+            itemPricingStandard.style.display = isPhone ? 'none' : '';
+        }
+        if (itemSalePriceRow) {
+            itemSalePriceRow.hidden = isPhone;
+            itemSalePriceRow.style.display = isPhone ? 'none' : '';
+        }
+        if (phoneVariantsSection) {
+            phoneVariantsSection.style.display = isPhone ? '' : 'none';
+        }
         if (itemCostField) itemCostField.hidden = isPhone;
         if (itemStockStatusField) itemStockStatusField.hidden = isPhone;
         if (itemStockQtyField) itemStockQtyField.hidden = isPhone;

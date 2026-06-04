@@ -369,6 +369,11 @@
     gap: 16px;
 }
 
+.admin-field-row[hidden],
+.admin-phone-extras[hidden] {
+    display: none !important;
+}
+
 .admin-check {
     display: flex;
     align-items: center;
