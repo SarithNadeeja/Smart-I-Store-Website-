@@ -1323,14 +1323,15 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     border-radius: 100px;
 }
 
-.category-carousel__viewport.is-dragging {
+.category-carousel__viewport.is-panning {
     cursor: grabbing;
     scroll-snap-type: none;
     user-select: none;
 }
 
-.category-carousel__viewport.is-dragging * {
-    pointer-events: none;
+.category-carousel__slide .product-actions a {
+    position: relative;
+    z-index: 2;
 }
 
 .category-carousel__track {
