@@ -441,6 +441,14 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             </div>
         </div>
 
+        <div class="admin-field-row" id="item-pricing-standard">
+            <div class="admin-field">
+                <label for="price">List price (Rs.)</label>
+                <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>" required>
+                <p class="admin-field-note">Normal price on the website.</p>
+            </div>
+        </div>
+
         <div class="admin-field-row" id="item-sale-price-row">
             <div class="admin-field">
                 <label for="sale_price">Sale price (Rs.) <small>optional</small></label>
@@ -451,14 +459,6 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                        ?>"
                        placeholder="e.g. 180000">
                 <p class="admin-field-note">Must be lower than list price. Shown with the old price crossed out.</p>
-            </div>
-        </div>
-
-        <div class="admin-field-row" id="item-pricing-standard">
-            <div class="admin-field">
-                <label for="price">List price (Rs.)</label>
-                <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>" required>
-                <p class="admin-field-note">Normal price on the website.</p>
             </div>
         </div>
 
