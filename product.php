@@ -19,12 +19,27 @@ if ($product) {
     $basePrice = (float) $product['price'];
     foreach ($product['storage_variants'] ?? [] as $variant) {
         $effective = store_variant_effective_price($variant, $basePrice);
+        $listPrice = (float) ($variant['list_price'] ?? $variant['price'] ?? $basePrice);
+        $onSale = !empty($variant['on_sale']);
         $variantOptions[] = array_merge($variant, [
             'effective_price' => $effective,
-            'price_formatted' => number_format($effective, 0),
+            'list_price' => $listPrice,
+            'current_price' => $effective,
+            'on_sale' => $onSale,
+            'price_formatted' => $onSale
+                ? 'Rs. ' . number_format($listPrice, 0) . ' → Rs. ' . number_format($effective, 0)
+                : 'Rs. ' . number_format($effective, 0),
+            'product_url' => page_url('product.php?id=' . (int) ($variant['item_id'] ?? $product['id'])),
         ]);
     }
-    $defaultVariant = $variantOptions[0] ?? null;
+    $currentVariant = null;
+    foreach ($variantOptions as $variant) {
+        if (!empty($variant['is_current']) || (int) ($variant['item_id'] ?? 0) === (int) $product['id']) {
+            $currentVariant = $variant;
+            break;
+        }
+    }
+    $defaultVariant = $currentVariant ?? ($variantOptions[0] ?? null);
     $whatsappOrderUrl = whatsapp_order_url(
         SITE_WHATSAPP_1,
         store_whatsapp_order_message($product, $defaultVariant)
@@ -46,8 +61,17 @@ if ($product) {
     $images = $product['images'];
     $mainImage = $images[0] ?? '';
     $stockStatus = $product['stock_status'] ?? 'in_stock';
-    $hasVariants = count($variantOptions) > 0;
-    $displayPrice = $hasVariants ? $variantOptions[0]['effective_price'] : (float) $product['price'];
+    $hasVariants = count($variantOptions) > 1;
+    if ($hasVariants && count($variantOptions) > 1) {
+        $displayCurrent = min(array_map(static fn(array $v): float => (float) $v['effective_price'], $variantOptions));
+        $displayList = null;
+        $pricePrefix = 'From ';
+    } else {
+        $priceSource = $defaultVariant ?? $product;
+        $displayCurrent = (float) ($priceSource['current_price'] ?? $priceSource['effective_price'] ?? $product['current_price'] ?? $product['price']);
+        $displayList = !empty($priceSource['on_sale']) ? (float) ($priceSource['list_price'] ?? $product['list_price'] ?? $product['price']) : null;
+        $pricePrefix = '';
+    }
     $systemSpecs = $product['system_specs'] ?? [];
     ?>
     <section class="section section-white product-detail-section">
@@ -116,14 +140,21 @@ if ($product) {
                     <p class="product-detail__meta"><?php echo htmlspecialchars($product['meta']); ?></p>
                     <?php endif; ?>
 
-                    <p class="product-detail__price" id="product-detail-price">Rs. <?php echo number_format($displayPrice, 0); ?></p>
+                    <p class="product-detail__price" id="product-detail-price"><?php
+                        if ($hasVariants && count($variantOptions) > 1) {
+                            echo store_format_price_display($displayCurrent, null, $pricePrefix);
+                        } else {
+                            echo store_format_price_display($displayCurrent, $displayList, $pricePrefix);
+                        }
+                    ?></p>
 
                     <?php if ($hasVariants): ?>
                     <div class="product-detail__variant-field">
                         <label class="product-detail__variant-label" for="product-variant">Storage option</label>
                         <select class="product-filters__select product-detail__variant-select" id="product-variant">
-                            <?php foreach ($variantOptions as $index => $variant): ?>
-                            <option value="<?php echo (int) $index; ?>"<?php echo $index === 0 ? ' selected' : ''; ?>>
+                            <?php foreach ($variantOptions as $variant): ?>
+                            <?php $isSelected = (int) ($variant['item_id'] ?? 0) === (int) $product['id']; ?>
+                            <option value="<?php echo (int) ($variant['item_id'] ?? 0); ?>"<?php echo $isSelected ? ' selected' : ''; ?>>
                                 <?php echo htmlspecialchars($variant['label']); ?> — Rs. <?php echo $variant['price_formatted']; ?>
                                 (<?php echo htmlspecialchars($variant['stock_label']); ?>)
                             </option>
@@ -195,7 +226,13 @@ if ($product) {
                             </div>
                             <div>
                                 <dt>Price</dt>
-                                <dd>Rs. <?php echo number_format($product['price'], 0); ?></dd>
+                                <dd><?php
+                                    $specCurrent = (float) ($product['current_price'] ?? $product['price']);
+                                    $specList = !empty($product['on_sale'])
+                                        ? (float) ($product['list_price'] ?? $product['price'])
+                                        : null;
+                                    echo store_format_price_display($specCurrent, $specList);
+                                ?></dd>
                             </div>
                         </dl>
                     </div>
@@ -215,7 +252,10 @@ if ($product) {
                 'product' => [
                     'id' => (int) $product['id'],
                     'name' => $product['name'],
-                    'price' => (float) $product['price'],
+                    'price' => (float) ($product['list_price'] ?? $product['price']),
+                    'current_price' => (float) ($product['current_price'] ?? $product['price']),
+                    'list_price' => (float) ($product['list_price'] ?? $product['price']),
+                    'on_sale' => !empty($product['on_sale']),
                     'meta' => $product['meta'] ?? '',
                     'category_title' => $product['category_title'] ?? '',
                     'stock_label' => $product['stock_label'] ?? '',

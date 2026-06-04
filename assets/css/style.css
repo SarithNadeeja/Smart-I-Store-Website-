@@ -1212,6 +1212,41 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     margin-bottom: 4px;
 }
 
+.product-price-row {
+    display: inline-flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.65rem;
+}
+
+.product-price-prefix {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-muted, #666);
+}
+
+.product-price--was {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-muted, #888);
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+}
+
+.product-price--now {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent, #c41e3a);
+}
+
+.product-detail__price .product-price--now {
+    font-size: 1.75rem;
+}
+
+.product-detail__price .product-price--was {
+    font-size: 1.15rem;
+}
+
 .product-price {
     font-size: 1.25rem;
     font-weight: 700;

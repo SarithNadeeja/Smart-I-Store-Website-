@@ -171,6 +171,24 @@ function db_migrate_upgrade(PDO $pdo): void
         CREATE INDEX IF NOT EXISTS idx_item_system_specs_item ON item_system_specs(item_id);
     ");
 
+    $hasVariantCost = $pdo->query(
+        "SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'item_storage_variants' AND column_name = 'cost_price'"
+    )->fetchColumn();
+    if (!$hasVariantCost) {
+        $pdo->exec(
+            'ALTER TABLE item_storage_variants ADD COLUMN cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0'
+        );
+    }
+
+    $hasSalePrice = $pdo->query(
+        "SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'sale_price'"
+    )->fetchColumn();
+    if (!$hasSalePrice) {
+        $pdo->exec('ALTER TABLE items ADD COLUMN sale_price NUMERIC(12, 2)');
+    }
+
     $hasQtyCol = $pdo->query(
         "SELECT 1 FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'stock_quantity'"

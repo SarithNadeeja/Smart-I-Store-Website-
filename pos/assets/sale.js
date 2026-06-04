@@ -49,9 +49,10 @@
             return;
         }
         productResults.innerHTML = items.map(function (p) {
-            return '<button type="button" class="pos-search-item" data-id="' + p.id + '" data-name="' + escapeAttr(p.name) + '" data-price="' + p.price + '" data-stock="' + p.stock_quantity + '">' +
+            var label = p.variant_label ? ' · ' + escapeHtml(p.variant_label) : '';
+            return '<button type="button" class="pos-search-item" data-id="' + p.id + '" data-name="' + escapeAttr(p.name) + '" data-price="' + p.price + '" data-is-phone="' + (p.is_phone ? '1' : '0') + '" data-stock="' + (p.stock_quantity || 0) + '">' +
                 '<strong>' + escapeHtml(p.name) + '</strong>' +
-                '<span>' + money(p.price) + ' · Stock: ' + p.stock_quantity + '</span>' +
+                '<span>' + money(p.price) + label + '</span>' +
                 '</button>';
         }).join('');
     }
@@ -88,23 +89,32 @@
 
     function addToCart(product) {
         var id = parseInt(product.id, 10);
+        var isPhone = product.is_phone === '1' || product.is_phone === true;
         var idx = findCartIndex(id);
         if (idx >= 0) {
-            if (cart[idx].quantity >= product.stock) {
+            if (isPhone) {
+                alert('This unit is already in the cart.');
+                return;
+            }
+            if (cart[idx].quantity >= (parseInt(product.stock, 10) || 0)) {
                 alert('Not enough stock.');
                 return;
             }
             cart[idx].quantity += 1;
-        } else {
-            cart.push({
-                product_id: id,
-                name: product.name,
-                unit_price: parseFloat(product.price),
-                quantity: 1,
-                discount: 0,
-                stock: parseInt(product.stock, 10)
-            });
+            renderCart();
+            productSearch.value = '';
+            productResults.innerHTML = '';
+            return;
         }
+        cart.push({
+            product_id: id,
+            name: product.name,
+            unit_price: parseFloat(product.price),
+            quantity: 1,
+            discount: 0,
+            is_phone: isPhone,
+            stock: parseInt(product.stock, 10) || 0
+        });
         renderCart();
         productSearch.value = '';
         productResults.innerHTML = '';
@@ -130,7 +140,7 @@
                 tr.innerHTML =
                     '<td>' + escapeHtml(line.name) + '</td>' +
                     '<td><input type="number" min="0" step="0.01" class="pos-cart-input" data-field="unit_price" data-idx="' + idx + '" value="' + line.unit_price.toFixed(2) + '"></td>' +
-                    '<td><input type="number" min="1" max="' + line.stock + '" step="1" class="pos-cart-input" data-field="quantity" data-idx="' + idx + '" value="' + line.quantity + '"></td>' +
+                    '<td>' + (line.is_phone ? '1' : '<input type="number" min="1" max="' + line.stock + '" step="1" class="pos-cart-input" data-field="quantity" data-idx="' + idx + '" value="' + line.quantity + '">') + '</td>' +
                     '<td><input type="number" min="0" step="0.01" class="pos-cart-input" data-field="discount" data-idx="' + idx + '" value="' + line.discount.toFixed(2) + '"></td>' +
                     '<td>' + money(lineTotal(line)) + '</td>' +
                     '<td><button type="button" class="admin-link-btn admin-link-btn--danger" data-remove="' + idx + '">Remove</button></td>';
@@ -141,7 +151,7 @@
         cartJson.value = JSON.stringify(cart.map(function (l) {
             return {
                 product_id: l.product_id,
-                quantity: l.quantity,
+                quantity: l.is_phone ? 1 : l.quantity,
                 unit_price: l.unit_price,
                 discount: l.discount
             };
@@ -182,6 +192,7 @@
             id: btn.dataset.id,
             name: btn.dataset.name,
             price: btn.dataset.price,
+            is_phone: btn.dataset.isPhone === '1',
             stock: btn.dataset.stock
         });
     });
@@ -223,6 +234,7 @@
         if (!line) return;
         var val = parseFloat(input.value) || 0;
         if (field === 'quantity') {
+            if (line.is_phone) return;
             val = Math.max(1, Math.min(line.stock, Math.round(val)));
         } else if (field === 'discount') {
             val = Math.max(0, val);

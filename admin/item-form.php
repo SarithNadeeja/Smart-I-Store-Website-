@@ -61,7 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $isUpdate = $id > 0;
         $name = trim($_POST['name'] ?? '');
-        $price = (float) ($_POST['price'] ?? 0);
         $tag = trim($_POST['tag'] ?? '');
         $color = trim($_POST['color'] ?? '#333333');
         $categoryId = (int) ($_POST['category_id'] ?? 0);
@@ -71,15 +70,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $isActive = isset($_POST['is_active']);
         $sortOrder = (int) ($_POST['sort_order'] ?? 0);
         $stockStatus = store_normalize_stock_status($_POST['stock_status'] ?? 'in_stock');
-        $stockQuantity = max(0, (int) ($_POST['stock_quantity'] ?? 0));
         $costPrice = max(0, (float) ($_POST['cost_price'] ?? 0));
         $reorderLevel = max(0, (int) ($_POST['reorder_level'] ?? 5));
+        $price = (float) ($_POST['price'] ?? 0);
+        $salePriceRaw = trim($_POST['sale_price'] ?? '');
+        $salePriceDb = null;
+        if ($salePriceRaw !== '') {
+            $salePriceDb = max(0, (float) $salePriceRaw);
+            if ($salePriceDb <= 0) {
+                $salePriceDb = null;
+            }
+        }
+        if ($tag !== '' && is_numeric($tag) && $salePriceDb === null) {
+            $legacySale = (float) $tag;
+            if ($legacySale > 0 && $legacySale < $price) {
+                $salePriceDb = $legacySale;
+                $tag = 'Sale';
+            }
+        }
 
         if ($name === '') {
             throw new RuntimeException('Item name is required.');
-        }
-        if ($price < 0) {
-            throw new RuntimeException('Price must be zero or greater.');
         }
         if ($brandId <= 0) {
             throw new RuntimeException('Select a brand.');
@@ -92,6 +103,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $isPhone = store_category_is_phone($categoryId);
+        $phoneVariant = store_parse_phone_variant_from_post($_POST);
+        $phoneSpecs = store_parse_phone_specs_from_post($_POST);
+        $phoneVariants = [];
+
+        if ($isPhone) {
+            store_validate_phone_variant($phoneVariant);
+            $synced = store_sync_item_pricing_from_variant($phoneVariant);
+            $price = $synced['price'];
+            $costPrice = $synced['cost_price'];
+            $stockStatus = $phoneVariant['stock_status'];
+            $stockQuantity = 1;
+            $phoneVariants = [$phoneVariant];
+        } else {
+            $stockQuantity = max(0, (int) ($_POST['stock_quantity'] ?? 0));
+        }
+        if (!$isPhone && $price < 0) {
+            throw new RuntimeException('Price must be zero or greater.');
+        }
+        if ($salePriceDb !== null && $salePriceDb >= $price) {
+            throw new RuntimeException('Sale price must be lower than the list price.');
+        }
 
         $modelCheck = $pdo->prepare(
             'SELECT id FROM product_models WHERE id = :mid AND brand_id = :bid AND is_active = TRUE'
@@ -112,9 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($isUpdate) {
             $stmt = $pdo->prepare(
-                'UPDATE items SET category_id = :cid, brand_id = :bid, model_id = :mid, name = :n, price = :p, tag = :t,
-                 color = :col, is_phone = :ip, is_featured = :if, main_image = :img, is_active = :a, sort_order = :s,
-                 stock_status = :st, stock_quantity = :qty, cost_price = :cost, reorder_level = :reorder
+                'UPDATE items SET category_id = :cid, brand_id = :bid, model_id = :mid, name = :n, price = :p,
+                 sale_price = :sp, tag = :t, color = :col, is_phone = :ip, is_featured = :if, main_image = :img,
+                 is_active = :a, sort_order = :s, stock_status = :st, stock_quantity = :qty, cost_price = :cost,
+                 reorder_level = :reorder
                  WHERE id = :id'
             );
             $stmt->execute([
@@ -123,6 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'mid' => $modelId,
                 'n' => $name,
                 'p' => $price,
+                'sp' => $salePriceDb,
                 't' => $tag,
                 'col' => $color,
                 'ip' => $isPhone,
@@ -138,9 +172,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
         } else {
             $stmt = $pdo->prepare(
-                'INSERT INTO items (category_id, brand_id, model_id, name, price, tag, color, is_phone, is_featured,
-                 main_image, is_active, sort_order, stock_status, stock_quantity, cost_price, reorder_level)
-                 VALUES (:cid, :bid, :mid, :n, :p, :t, :col, :ip, :if, :img, :a, :s, :st, :qty, :cost, :reorder) RETURNING id'
+                'INSERT INTO items (category_id, brand_id, model_id, name, price, sale_price, tag, color, is_phone,
+                 is_featured, main_image, is_active, sort_order, stock_status, stock_quantity, cost_price, reorder_level)
+                 VALUES (:cid, :bid, :mid, :n, :p, :sp, :t, :col, :ip, :if, :img, :a, :s, :st, :qty, :cost, :reorder)
+                 RETURNING id'
             );
             $stmt->execute([
                 'cid' => $categoryId,
@@ -148,6 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'mid' => $modelId,
                 'n' => $name,
                 'p' => $price,
+                'sp' => $salePriceDb,
                 't' => $tag,
                 'col' => $color,
                 'ip' => $isPhone,
@@ -220,8 +256,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $phoneVariants = store_parse_phone_variants_from_post($_POST);
-        $phoneSpecs = store_parse_phone_specs_from_post($_POST);
         store_replace_item_phone_details($pdo, $id, $isPhone, $phoneVariants, $phoneSpecs);
 
         $flashMsg = $isUpdate ? 'Item updated.' : 'Item created.';
@@ -246,6 +280,7 @@ $maxSubImages = store_max_sub_images();
 $subImageCount = count($subImages);
 $subSlotsLeft = max(0, $maxSubImages - $subImageCount);
 $storageVariants = $id > 0 ? store_get_item_storage_variants($id) : [];
+$storageVariant = $storageVariants[0] ?? null;
 $systemSpecs = $id > 0 ? store_get_item_system_specs($id) : [];
 $initialCategoryId = (int) ($item['category_id'] ?? 0);
 $initialIsPhone = $initialCategoryId > 0 && store_category_is_phone($initialCategoryId);
@@ -321,8 +356,51 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($item['name'] ?? ''); ?>" required>
         </div>
 
-        <div class="admin-field-row">
-            <div class="admin-field">
+        <div class="admin-phone-extras" id="phone-variants-section"<?php echo $initialIsPhone ? '' : ' hidden'; ?>>
+            <h3 class="admin-phone-extras__title">Phone / tablet — this unit</h3>
+            <p class="admin-field-note">Add one listing per physical phone. Same brand and model with different RAM/ROM appear as storage options on the shop. Create another item for each extra unit.</p>
+
+            <div class="admin-field-row admin-phone-variant-fields">
+                <div class="admin-field">
+                    <label for="phone_variant_ram">RAM</label>
+                    <input type="text" id="phone_variant_ram" name="phone_variant_ram"
+                           value="<?php echo htmlspecialchars($storageVariant['ram'] ?? ''); ?>" placeholder="e.g. 8GB">
+                </div>
+                <div class="admin-field">
+                    <label for="phone_variant_rom">ROM</label>
+                    <input type="text" id="phone_variant_rom" name="phone_variant_rom"
+                           value="<?php echo htmlspecialchars($storageVariant['rom'] ?? ''); ?>" placeholder="e.g. 128GB">
+                </div>
+                <div class="admin-field">
+                    <label for="phone_variant_price">List price (Rs.)</label>
+                    <input type="number" id="phone_variant_price" name="phone_variant_price" min="0" step="0.01" required
+                           value="<?php echo $storageVariant && $storageVariant['price'] !== null ? htmlspecialchars((string) $storageVariant['price']) : ''; ?>"
+                           placeholder="Selling price">
+                </div>
+                <div class="admin-field">
+                    <label for="phone_variant_cost">Cost price (Rs.) <small>POS profit</small></label>
+                    <input type="number" id="phone_variant_cost" name="phone_variant_cost" min="0" step="0.01" required
+                           value="<?php echo htmlspecialchars((string) ($storageVariant['cost_price'] ?? 0)); ?>"
+                           placeholder="Your cost">
+                </div>
+                <div class="admin-field">
+                    <label for="phone_variant_stock">Stock</label>
+                    <select id="phone_variant_stock" name="phone_variant_stock">
+                        <?php
+                        $variantStock = $storageVariant['stock_status'] ?? $currentStock;
+                        foreach ($stockStatuses as $value => $label):
+                        ?>
+                        <option value="<?php echo htmlspecialchars($value); ?>"<?php echo $variantStock === $value ? ' selected' : ''; ?>>
+                            <?php echo htmlspecialchars($label); ?>
+                        </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-field-row" id="item-stock-standard">
+            <div class="admin-field" id="item-stock-status-field">
                 <label for="stock_status">Stock status</label>
                 <select id="stock_status" name="stock_status" required>
                     <?php foreach ($stockStatuses as $value => $label): ?>
@@ -332,13 +410,13 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="admin-field">
+            <div class="admin-field" id="item-stock-qty-field">
                 <label for="stock_quantity">Quantity in stock</label>
                 <input type="number" id="stock_quantity" name="stock_quantity" min="0" step="1"
                        value="<?php echo (int) ($item['stock_quantity'] ?? 0); ?>" required>
-                <p class="admin-field-note">Units on hand now. POS sales reduce this count.</p>
+                <p class="admin-field-note">For accessories and other items. Phones are always one unit per listing.</p>
             </div>
-            <div class="admin-field">
+            <div class="admin-field" id="item-cost-field">
                 <label for="cost_price">Cost price (Rs.) <small>for POS profit</small></label>
                 <input type="number" id="cost_price" name="cost_price" min="0" step="0.01"
                        value="<?php echo htmlspecialchars((string) ($item['cost_price'] ?? 0)); ?>">
@@ -351,14 +429,30 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             </div>
         </div>
 
-        <div class="admin-field-row">
+        <div class="admin-field-row" id="item-sale-price-row">
             <div class="admin-field">
-                <label for="price">Price (Rs.)</label>
-                <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>" required>
+                <label for="sale_price">Sale price (Rs.) <small>optional</small></label>
+                <input type="number" id="sale_price" name="sale_price" min="0" step="0.01"
+                       value="<?php
+                       $saleVal = $item['sale_price'] ?? null;
+                       echo $saleVal !== null && $saleVal !== '' ? htmlspecialchars((string) $saleVal) : '';
+                       ?>"
+                       placeholder="e.g. 180000">
+                <p class="admin-field-note">Must be lower than list price. Shown on the website with the old price crossed out.</p>
+            </div>
+        </div>
+
+        <div class="admin-field-row" id="item-pricing-standard">
+            <div class="admin-field">
+                <label for="price">List price (Rs.)</label>
+                <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>"<?php echo $initialIsPhone ? '' : ' required'; ?>>
             </div>
             <div class="admin-field">
-                <label for="tag">Tag <small>(e.g. New, Sale)</small></label>
-                <input type="text" id="tag" name="tag" value="<?php echo htmlspecialchars($item['tag'] ?? ''); ?>">
+                <label for="tag">Badge label <small>(e.g. New, Hot)</small></label>
+                <input type="text" id="tag" name="tag" value="<?php
+                    $tagVal = trim($item['tag'] ?? '');
+                    echo htmlspecialchars(is_numeric($tagVal) ? 'Sale' : $tagVal);
+                ?>">
             </div>
             <div class="admin-field">
                 <label for="color">Accent color</label>
@@ -394,51 +488,6 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                                    placeholder="e.g. One-year warranty · Free delivery">
                         </div>
                         <button type="button" class="admin-repeat-remove" aria-label="Remove detail">&times;</button>
-                    </div>
-                    <?php endforeach; ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-        </div>
-
-        <div class="admin-phone-extras" id="phone-variants-section"<?php echo $initialIsPhone ? '' : ' hidden'; ?>>
-            <h3 class="admin-phone-extras__title">Mobile phone — storage variants</h3>
-            <p class="admin-field-note">Shown only for phone categories. Add multiple RAM/ROM options for the same model.</p>
-
-            <div class="admin-phone-block">
-                <div class="admin-phone-block__head">
-                    <h4>RAM / ROM variants</h4>
-                    <button type="button" class="btn btn-ghost btn-sm" id="add-variant-row">Add variant</button>
-                </div>
-                <div class="admin-repeat-list" id="variant-rows">
-                    <?php if ($storageVariants): ?>
-                    <?php foreach ($storageVariants as $variant): ?>
-                    <div class="admin-repeat-row admin-variant-row">
-                        <div class="admin-field">
-                            <label>RAM</label>
-                            <input type="text" name="phone_variant_ram[]" value="<?php echo htmlspecialchars($variant['ram']); ?>" placeholder="e.g. 8GB">
-                        </div>
-                        <div class="admin-field">
-                            <label>ROM</label>
-                            <input type="text" name="phone_variant_rom[]" value="<?php echo htmlspecialchars($variant['rom']); ?>" placeholder="e.g. 128GB">
-                        </div>
-                        <div class="admin-field">
-                            <label>Price (Rs.) <small>optional</small></label>
-                            <input type="number" name="phone_variant_price[]" min="0" step="0.01"
-                                   value="<?php echo $variant['price'] !== null ? htmlspecialchars((string) $variant['price']) : ''; ?>"
-                                   placeholder="Listing price if empty">
-                        </div>
-                        <div class="admin-field">
-                            <label>Stock</label>
-                            <select name="phone_variant_stock[]">
-                                <?php foreach ($stockStatuses as $value => $label): ?>
-                                <option value="<?php echo htmlspecialchars($value); ?>"<?php echo $variant['stock_status'] === $value ? ' selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($label); ?>
-                                </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <button type="button" class="admin-repeat-remove" aria-label="Remove variant">&times;</button>
                     </div>
                     <?php endforeach; ?>
                     <?php endif; ?>
@@ -600,9 +649,12 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     var stockStatuses = <?php echo json_encode($stockStatuses, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
     var categorySelect = document.getElementById('category_id');
     var phoneVariantsSection = document.getElementById('phone-variants-section');
-    var variantRows = document.getElementById('variant-rows');
+    var itemPricingStandard = document.getElementById('item-pricing-standard');
+    var itemCostField = document.getElementById('item-cost-field');
+    var itemStockStatusField = document.getElementById('item-stock-status-field');
+    var itemStockQtyField = document.getElementById('item-stock-qty-field');
+    var priceInput = document.getElementById('price');
     var specRows = document.getElementById('spec-rows');
-    var addVariantBtn = document.getElementById('add-variant-row');
     var addSpecBtn = document.getElementById('add-spec-row');
 
     function stockOptionsHtml(selected) {
@@ -615,9 +667,15 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     }
 
     function syncPhoneVariantsVisibility() {
-        if (!categorySelect || !phoneVariantsSection) return;
+        if (!categorySelect) return;
         var opt = categorySelect.options[categorySelect.selectedIndex];
-        phoneVariantsSection.hidden = !(opt && opt.getAttribute('data-is-phone') === '1');
+        var isPhone = !!(opt && opt.getAttribute('data-is-phone') === '1');
+        if (phoneVariantsSection) phoneVariantsSection.hidden = !isPhone;
+        if (itemPricingStandard) itemPricingStandard.hidden = isPhone;
+        if (itemCostField) itemCostField.hidden = isPhone;
+        if (itemStockStatusField) itemStockStatusField.hidden = isPhone;
+        if (itemStockQtyField) itemStockQtyField.hidden = isPhone;
+        if (priceInput) priceInput.required = !isPhone;
     }
 
     if (categorySelect) {
@@ -637,20 +695,6 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         });
     }
 
-    function addVariantRow() {
-        if (!variantRows) return;
-        var row = document.createElement('div');
-        row.className = 'admin-repeat-row admin-variant-row';
-        row.innerHTML =
-            '<div class="admin-field"><label>RAM</label><input type="text" name="phone_variant_ram[]" placeholder="e.g. 8GB"></div>' +
-            '<div class="admin-field"><label>ROM</label><input type="text" name="phone_variant_rom[]" placeholder="e.g. 128GB"></div>' +
-            '<div class="admin-field"><label>Price (Rs.) <small>optional</small></label><input type="number" name="phone_variant_price[]" min="0" step="0.01" placeholder="Listing price if empty"></div>' +
-            '<div class="admin-field"><label>Stock</label><select name="phone_variant_stock[]">' + stockOptionsHtml('in_stock') + '</select></div>' +
-            '<button type="button" class="admin-repeat-remove" aria-label="Remove variant">&times;</button>';
-        variantRows.appendChild(row);
-        bindRemoveButtons(row);
-    }
-
     function addSpecRow() {
         if (!specRows) return;
         var row = document.createElement('div');
@@ -663,9 +707,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         bindRemoveButtons(row);
     }
 
-    if (addVariantBtn) addVariantBtn.addEventListener('click', addVariantRow);
     if (addSpecBtn) addSpecBtn.addEventListener('click', addSpecRow);
-    bindRemoveButtons(variantRows);
     bindRemoveButtons(specRows);
 })();
 </script>

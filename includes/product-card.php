@@ -51,7 +51,12 @@ $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
         <?php if (!empty($phone['meta'])): ?>
         <p class="product-meta"><?php echo htmlspecialchars($phone['meta']); ?></p>
         <?php endif; ?>
-        <p class="product-price">Rs. <?php echo number_format($phone['price'], 0); ?></p>
+        <p class="product-price"><?php
+            $cardPrefix = !empty($phone['price_from']) ? 'From ' : '';
+            $cardCurrent = (float) ($phone['current_price'] ?? $phone['price']);
+            $cardList = !empty($phone['on_sale']) ? (float) ($phone['list_price'] ?? $phone['price']) : null;
+            echo store_format_price_display($cardCurrent, $cardList, $cardPrefix);
+        ?></p>
         <div class="product-actions">
             <a href="<?php echo htmlspecialchars($detailUrl); ?>" class="btn btn-primary btn-sm">Buy Now</a>
             <a href="<?php echo htmlspecialchars($detailUrl); ?>" class="btn btn-ghost btn-sm">View</a>

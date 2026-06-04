@@ -38,6 +38,51 @@ function store_icon_options(): array
     ];
 }
 
+function store_parse_sale_price_value(array $row): ?float
+{
+    if (array_key_exists('sale_price', $row) && $row['sale_price'] !== null && $row['sale_price'] !== '') {
+        $sale = (float) $row['sale_price'];
+        if ($sale > 0) {
+            return $sale;
+        }
+    }
+
+    $tag = trim((string) ($row['tag'] ?? ''));
+    if ($tag !== '' && is_numeric($tag)) {
+        $legacy = (float) $tag;
+        $list = (float) ($row['price'] ?? 0);
+        if ($legacy > 0 && $legacy < $list) {
+            return $legacy;
+        }
+    }
+
+    return null;
+}
+
+function store_apply_item_pricing(array $item, array $row): array
+{
+    $listPrice = (float) ($row['price'] ?? $item['price'] ?? 0);
+    $salePrice = store_parse_sale_price_value($row);
+    $onSale = $salePrice !== null && $salePrice < $listPrice;
+
+    $item['price'] = $listPrice;
+    $item['list_price'] = $listPrice;
+    $item['sale_price'] = $onSale ? $salePrice : null;
+    $item['current_price'] = $onSale ? (float) $salePrice : $listPrice;
+    $item['on_sale'] = $onSale;
+
+    $tag = trim((string) ($row['tag'] ?? ''));
+    if ($tag !== '' && !is_numeric($tag)) {
+        $item['tag'] = $tag;
+    } elseif ($onSale) {
+        $item['tag'] = 'Sale';
+    } else {
+        $item['tag'] = $tag !== '' ? $tag : 'New';
+    }
+
+    return $item;
+}
+
 function store_map_item_row(array $row): array
 {
     $brand = $row['brand_name'] ?? '';
@@ -47,7 +92,7 @@ function store_map_item_row(array $row): array
         $meta = $meta !== '' ? $brand . ' · ' . $model : $model;
     }
 
-    return [
+    $item = [
         'id' => (int) $row['id'],
         'name' => $row['name'],
         'brand' => $brand,
@@ -56,7 +101,6 @@ function store_map_item_row(array $row): array
         'model_id' => isset($row['model_id']) ? (int) $row['model_id'] : 0,
         'meta' => $meta,
         'price' => (float) $row['price'],
-        'tag' => $row['tag'] !== '' ? $row['tag'] : 'New',
         'image' => $row['main_image'] ?? '',
         'color' => $row['color'] ?? '#333333',
         'category_id' => isset($row['category_id']) ? (int) $row['category_id'] : null,
@@ -64,7 +108,30 @@ function store_map_item_row(array $row): array
         'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
         'stock_label' => store_stock_label(store_normalize_stock_status($row['stock_status'] ?? 'in_stock')),
         'stock_quantity' => max(0, (int) ($row['stock_quantity'] ?? 0)),
+        'tag' => $row['tag'] ?? '',
     ];
+
+    return store_apply_item_pricing($item, $row);
+}
+
+function store_format_price_display(float $currentPrice, ?float $listPrice = null, string $prefix = ''): string
+{
+    $showSale = $listPrice !== null && $listPrice > $currentPrice;
+    $html = '<span class="product-price-row">';
+    if ($prefix !== '') {
+        $html .= '<span class="product-price-prefix">' . htmlspecialchars($prefix) . '</span>';
+    }
+    if ($showSale) {
+        $html .= '<span class="product-price--was" aria-label="Original price">Rs. '
+            . number_format($listPrice, 0) . '</span>';
+        $html .= '<span class="product-price--now" aria-label="Sale price">Rs. '
+            . number_format($currentPrice, 0) . '</span>';
+    } else {
+        $html .= '<span class="product-price--now">Rs. ' . number_format($currentPrice, 0) . '</span>';
+    }
+    $html .= '</span>';
+
+    return $html;
 }
 
 function store_item_select_sql(): string
@@ -93,10 +160,12 @@ function store_get_featured_phones(int $limit = 4): array
         LIMIT :lim
     ";
     $stmt = db()->prepare($sql);
-    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':lim', max($limit * 6, $limit), PDO::PARAM_INT);
     $stmt->execute();
 
-    return array_map('store_map_item_row', $stmt->fetchAll());
+    $rows = store_group_products_for_listing(array_map('store_map_item_row', $stmt->fetchAll()));
+
+    return array_slice($rows, 0, $limit);
 }
 
 function store_get_all_products(): array
@@ -142,7 +211,7 @@ function store_get_product(int $id): ?array
     $product['images'] = $images;
 
     if (!empty($product['is_phone'])) {
-        $product['storage_variants'] = store_get_item_storage_variants($id);
+        $product['storage_variants'] = store_get_phone_model_variants($id);
     } else {
         $product['storage_variants'] = [];
     }
@@ -159,7 +228,7 @@ function store_get_item_storage_variants(int $itemId): array
     }
 
     $stmt = db()->prepare(
-        'SELECT id, ram, rom, price, stock_status, sort_order
+        'SELECT id, ram, rom, price, cost_price, stock_status, sort_order
          FROM item_storage_variants
          WHERE item_id = :id
          ORDER BY sort_order ASC, id ASC'
@@ -173,6 +242,7 @@ function store_get_item_storage_variants(int $itemId): array
             'ram' => trim($row['ram'] ?? ''),
             'rom' => trim($row['rom'] ?? ''),
             'price' => $price !== null && $price !== '' ? (float) $price : null,
+            'cost_price' => (float) ($row['cost_price'] ?? 0),
             'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
             'stock_label' => store_stock_label(store_normalize_stock_status($row['stock_status'] ?? 'in_stock')),
             'sort_order' => (int) $row['sort_order'],
@@ -221,47 +291,217 @@ function store_format_storage_variant_label(string $ram, string $rom): string
 
 function store_variant_effective_price(array $variant, float $basePrice): float
 {
+    if (!empty($variant['current_price'])) {
+        return (float) $variant['current_price'];
+    }
     if (isset($variant['price']) && $variant['price'] !== null && $variant['price'] !== '') {
-        return (float) $variant['price'];
+        $list = (float) $variant['price'];
+        $sale = store_parse_sale_price_value($variant);
+        if ($sale !== null && $sale < $list) {
+            return $sale;
+        }
+        return $list;
+    }
+    $sale = store_parse_sale_price_value(['price' => $basePrice, 'sale_price' => $variant['sale_price'] ?? null, 'tag' => $variant['tag'] ?? '']);
+    if ($sale !== null && $sale < $basePrice) {
+        return $sale;
     }
     return $basePrice;
 }
 
-function store_parse_phone_variants_from_post(array $source): array
+function store_variant_effective_cost(array $variant, float $baseCost): float
 {
-    $rams = $source['phone_variant_ram'] ?? [];
-    $roms = $source['phone_variant_rom'] ?? [];
-    $prices = $source['phone_variant_price'] ?? [];
-    $stocks = $source['phone_variant_stock'] ?? [];
+    if (isset($variant['cost_price']) && $variant['cost_price'] !== null && $variant['cost_price'] !== '') {
+        return (float) $variant['cost_price'];
+    }
+    return $baseCost;
+}
 
-    if (!is_array($rams)) {
+function store_get_phone_model_variants(int $itemId): array
+{
+    if (!db_available() || $itemId <= 0) {
         return [];
     }
 
-    $variants = [];
-    $count = count($rams);
+    $stmt = db()->prepare(
+        'SELECT brand_id, model_id, is_phone FROM items WHERE id = :id'
+    );
+    $stmt->execute(['id' => $itemId]);
+    $anchor = $stmt->fetch();
+    if (!$anchor || empty($anchor['is_phone'])) {
+        return [];
+    }
 
-    for ($i = 0; $i < $count; $i++) {
-        $ram = trim((string) ($rams[$i] ?? ''));
-        $rom = trim((string) ($roms[$i] ?? ''));
-        if ($ram === '' && $rom === '') {
+    $brandId = (int) ($anchor['brand_id'] ?? 0);
+    $modelId = (int) ($anchor['model_id'] ?? 0);
+    if ($brandId <= 0 || $modelId <= 0) {
+        return store_map_storage_variant_rows(store_get_item_storage_variants($itemId), $itemId);
+    }
+
+    $stmt = db()->prepare(
+        'SELECT i.id AS item_id, i.price, i.sale_price, i.cost_price, i.stock_status, i.sort_order, i.tag,
+                sv.ram, sv.rom, sv.price AS variant_price, sv.cost_price AS variant_cost
+         FROM items i
+         LEFT JOIN item_storage_variants sv ON sv.item_id = i.id
+         WHERE i.is_active = TRUE AND i.is_phone = TRUE
+           AND i.brand_id = :bid AND i.model_id = :mid
+         ORDER BY i.sort_order ASC, i.id ASC, sv.sort_order ASC, sv.id ASC'
+    );
+    $stmt->execute(['bid' => $brandId, 'mid' => $modelId]);
+
+    $byItem = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $id = (int) $row['item_id'];
+        if (isset($byItem[$id])) {
             continue;
         }
+        $ram = trim($row['ram'] ?? '');
+        $rom = trim($row['rom'] ?? '');
+        $itemPrice = (float) ($row['price'] ?? 0);
+        $variantPrice = $row['variant_price'];
+        $price = $variantPrice !== null && $variantPrice !== ''
+            ? (float) $variantPrice
+            : $itemPrice;
+        $cost = $row['variant_cost'] !== null && $row['variant_cost'] !== ''
+            ? (float) $row['variant_cost']
+            : (float) ($row['cost_price'] ?? 0);
+        $stockStatus = store_normalize_stock_status($row['stock_status'] ?? 'in_stock');
 
-        $priceRaw = trim((string) ($prices[$i] ?? ''));
-        $price = $priceRaw === '' ? null : max(0, (float) $priceRaw);
-        $stock = store_normalize_stock_status((string) ($stocks[$i] ?? 'in_stock'));
-
-        $variants[] = [
+        $variantRow = [
+            'item_id' => $id,
+            'id' => $id,
             'ram' => $ram,
             'rom' => $rom,
             'price' => $price,
-            'stock_status' => $stock,
-            'sort_order' => count($variants),
+            'cost_price' => $cost,
+            'stock_status' => $stockStatus,
+            'stock_label' => store_stock_label($stockStatus),
+            'sort_order' => (int) ($row['sort_order'] ?? 0),
+            'label' => store_format_storage_variant_label($ram, $rom),
+            'is_current' => $id === $itemId,
+            'tag' => $row['tag'] ?? '',
+            'sale_price' => $row['sale_price'] ?? null,
         ];
+        $byItem[$id] = store_apply_item_pricing($variantRow, [
+            'price' => $price,
+            'sale_price' => $row['sale_price'] ?? null,
+            'tag' => $row['tag'] ?? '',
+        ]);
+        $byItem[$id]['price'] = $price;
     }
 
-    return $variants;
+    return array_values($byItem);
+}
+
+function store_map_storage_variant_rows(array $variants, int $currentItemId): array
+{
+    return array_map(static function (array $variant) use ($currentItemId): array {
+        $itemId = (int) ($variant['item_id'] ?? $currentItemId);
+        return array_merge($variant, [
+            'item_id' => $itemId,
+            'id' => $itemId,
+            'is_current' => $itemId === $currentItemId,
+        ]);
+    }, $variants);
+}
+
+function store_group_products_for_listing(array $products): array
+{
+    $grouped = [];
+    $indexByKey = [];
+
+    foreach ($products as $product) {
+        if (empty($product['is_phone'])) {
+            $grouped[] = $product;
+            continue;
+        }
+
+        $brandId = (int) ($product['brand_id'] ?? 0);
+        $modelId = (int) ($product['model_id'] ?? 0);
+        if ($brandId <= 0 || $modelId <= 0) {
+            $grouped[] = $product;
+            continue;
+        }
+
+        $key = $brandId . ':' . $modelId;
+        if (!isset($indexByKey[$key])) {
+            $product['price_from'] = false;
+            $indexByKey[$key] = count($grouped);
+            $grouped[] = $product;
+            continue;
+        }
+
+        $idx = $indexByKey[$key];
+        $grouped[$idx]['price_from'] = true;
+        if ((float) ($product['current_price'] ?? $product['price'] ?? 0)
+            < (float) ($grouped[$idx]['current_price'] ?? $grouped[$idx]['price'] ?? 0)) {
+            $grouped[$idx] = array_merge($grouped[$idx], [
+                'price' => $product['price'],
+                'list_price' => $product['list_price'] ?? $product['price'],
+                'sale_price' => $product['sale_price'] ?? null,
+                'current_price' => $product['current_price'] ?? $product['price'],
+                'on_sale' => !empty($product['on_sale']),
+                'id' => $product['id'],
+                'image' => $product['image'] ?? $grouped[$idx]['image'],
+                'tag' => $product['tag'] ?? $grouped[$idx]['tag'],
+            ]);
+        }
+    }
+
+    return $grouped;
+}
+
+function store_validate_phone_variant(?array $variant): void
+{
+    if (!$variant) {
+        throw new RuntimeException('Enter RAM or ROM, sell price, and cost price for this unit.');
+    }
+
+    if (($variant['ram'] ?? '') === '' && ($variant['rom'] ?? '') === '') {
+        throw new RuntimeException('Enter RAM or ROM for this unit.');
+    }
+    $price = $variant['price'] ?? null;
+    if ($price === null || (float) $price <= 0) {
+        throw new RuntimeException('Sell price is required.');
+    }
+    if (!array_key_exists('cost_price', $variant) || $variant['cost_price'] === null) {
+        throw new RuntimeException('Cost price is required.');
+    }
+    if ((float) $variant['cost_price'] < 0) {
+        throw new RuntimeException('Cost price cannot be negative.');
+    }
+}
+
+function store_sync_item_pricing_from_variant(array $variant): array
+{
+    return [
+        'price' => (float) ($variant['price'] ?? 0),
+        'cost_price' => (float) ($variant['cost_price'] ?? 0),
+    ];
+}
+
+function store_parse_phone_variant_from_post(array $source): ?array
+{
+    $ram = trim((string) ($source['phone_variant_ram'] ?? ''));
+    $rom = trim((string) ($source['phone_variant_rom'] ?? ''));
+    if ($ram === '' && $rom === '') {
+        return null;
+    }
+
+    $priceRaw = trim((string) ($source['phone_variant_price'] ?? ''));
+    $price = $priceRaw === '' ? null : max(0, (float) $priceRaw);
+    $costRaw = trim((string) ($source['phone_variant_cost'] ?? ''));
+    $costPrice = $costRaw === '' ? null : max(0, (float) $costRaw);
+    $stock = store_normalize_stock_status((string) ($source['phone_variant_stock'] ?? 'in_stock'));
+
+    return [
+        'ram' => $ram,
+        'rom' => $rom,
+        'price' => $price,
+        'cost_price' => $costPrice,
+        'stock_status' => $stock,
+        'sort_order' => 0,
+    ];
 }
 
 function store_parse_phone_specs_from_post(array $source): array
@@ -291,21 +531,19 @@ function store_replace_item_phone_details(PDO $pdo, int $itemId, bool $isPhone, 
     $pdo->prepare('DELETE FROM item_storage_variants WHERE item_id = :id')->execute(['id' => $itemId]);
     $pdo->prepare('DELETE FROM item_system_specs WHERE item_id = :id')->execute(['id' => $itemId]);
 
-    if ($isPhone) {
-        $variantStmt = $pdo->prepare(
-            'INSERT INTO item_storage_variants (item_id, ram, rom, price, stock_status, sort_order)
-             VALUES (:item, :ram, :rom, :price, :stock, :ord)'
-        );
-        foreach ($variants as $variant) {
-            $variantStmt->execute([
-                'item' => $itemId,
-                'ram' => $variant['ram'],
-                'rom' => $variant['rom'],
-                'price' => $variant['price'],
-                'stock' => $variant['stock_status'],
-                'ord' => $variant['sort_order'],
-            ]);
-        }
+    if ($isPhone && $variants) {
+        $variant = $variants[0];
+        $pdo->prepare(
+            'INSERT INTO item_storage_variants (item_id, ram, rom, price, cost_price, stock_status, sort_order)
+             VALUES (:item, :ram, :rom, :price, :cost, :stock, 0)'
+        )->execute([
+            'item' => $itemId,
+            'ram' => $variant['ram'],
+            'rom' => $variant['rom'],
+            'price' => $variant['price'],
+            'cost' => $variant['cost_price'] ?? 0,
+            'stock' => $variant['stock_status'],
+        ]);
     }
 
     $specStmt = $pdo->prepare(
@@ -323,7 +561,7 @@ function store_replace_item_phone_details(PDO $pdo, int $itemId, bool $isPhone, 
 
 function store_whatsapp_order_message(array $product, ?array $variant = null): string
 {
-    $basePrice = (float) ($product['price'] ?? 0);
+    $basePrice = (float) ($product['current_price'] ?? $product['price'] ?? 0);
     $orderPrice = $variant ? store_variant_effective_price($variant, $basePrice) : $basePrice;
 
     $lines = [
@@ -428,7 +666,9 @@ function store_get_home_category_slides(int $limitPerCategory = 50): array
     $slides = [];
 
     foreach (store_get_categories() as $cat) {
-        $products = store_get_products_by_category((int) $cat['id'], $limitPerCategory);
+        $products = store_group_products_for_listing(
+            store_get_products_by_category((int) $cat['id'], $limitPerCategory)
+        );
         if ($products === []) {
             continue;
         }
@@ -584,11 +824,14 @@ function store_category_is_phone(int $categoryId): bool
     if (!$row) {
         return false;
     }
-    if (($row['icon'] ?? '') === 'smartphone') {
+    $icon = (string) ($row['icon'] ?? '');
+    if ($icon === 'smartphone' || $icon === 'tablet') {
         return true;
     }
     $label = strtolower(trim(($row['description'] ?? '') . ' ' . ($row['title'] ?? '')));
-    return str_contains($label, 'phone') || str_contains($label, 'smartphone');
+    return str_contains($label, 'phone')
+        || str_contains($label, 'smartphone')
+        || str_contains($label, 'tablet');
 }
 
 function store_max_sub_images(): int

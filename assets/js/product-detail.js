@@ -166,6 +166,9 @@
         }
 
         function effectivePrice(variant) {
+            if (variant && variant.current_price != null) {
+                return Number(variant.current_price);
+            }
             if (variant && variant.effective_price != null) {
                 return Number(variant.effective_price);
             }
@@ -173,7 +176,36 @@
             if (variant && variant.price != null && variant.price !== '') {
                 return Number(variant.price);
             }
-            return Number(product.price || 0);
+            return Number(product.current_price || product.price || 0);
+        }
+
+        function listPriceFor(variant) {
+            if (variant && variant.on_sale && variant.list_price != null) {
+                return Number(variant.list_price);
+            }
+            var product = orderData.product || {};
+            if (!variant && product.on_sale && product.list_price != null) {
+                return Number(product.list_price);
+            }
+            return null;
+        }
+
+        function formatPriceHtml(current, list, prefix) {
+            var html = '<span class="product-price-row">';
+            if (prefix) {
+                html += '<span class="product-price-prefix">' + prefix + '</span>';
+            }
+            if (list != null && list > current) {
+                html += '<span class="product-price--was" aria-label="Original price">Rs. '
+                    + Math.round(list).toLocaleString('en-LK') + '</span>';
+                html += '<span class="product-price--now" aria-label="Sale price">Rs. '
+                    + Math.round(current).toLocaleString('en-LK') + '</span>';
+            } else {
+                html += '<span class="product-price--now">Rs. '
+                    + Math.round(current).toLocaleString('en-LK') + '</span>';
+            }
+            html += '</span>';
+            return html;
         }
 
         function buildOrderMessage(variant) {
@@ -222,7 +254,9 @@
 
         function applyVariant(variant) {
             if (priceEl) {
-                priceEl.textContent = 'Rs. ' + Math.round(effectivePrice(variant)).toLocaleString('en-LK');
+                var current = effectivePrice(variant);
+                var list = listPriceFor(variant);
+                priceEl.innerHTML = formatPriceHtml(current, list, '');
             }
             if (stockEl && variant && variant.stock_label) {
                 stockEl.textContent = variant.stock_label;
@@ -233,11 +267,20 @@
 
         var variants = orderData.variants || [];
 
+        var currentProductId = (orderData.product && orderData.product.id) ? parseInt(orderData.product.id, 10) : 0;
+
         if (variantSelect && variants.length) {
             variantSelect.addEventListener('change', function () {
-                var index = parseInt(variantSelect.value, 10);
-                if (!isNaN(index) && variants[index]) {
-                    applyVariant(variants[index]);
+                var itemId = parseInt(variantSelect.value, 10);
+                if (!isNaN(itemId) && itemId > 0 && itemId !== currentProductId) {
+                    window.location.href = 'product.php?id=' + itemId;
+                    return;
+                }
+                var chosen = variants.find(function (v) {
+                    return parseInt(v.item_id, 10) === itemId;
+                });
+                if (chosen) {
+                    applyVariant(chosen);
                 }
             });
         }

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once dirname(__DIR__, 2) . '/includes/store.php';
 
 function pos_payment_methods(): array
 {
@@ -83,7 +84,7 @@ function pos_search_products(string $q, int $limit = 20): array
 {
     $q = trim($q);
     $sql = "
-        SELECT i.id, i.name, i.price, i.cost_price, i.stock_quantity, i.reorder_level,
+        SELECT i.id, i.name, i.price, i.cost_price, i.stock_quantity, i.reorder_level, i.is_phone,
                c.title AS category_name, b.name AS brand_name
         FROM items i
         LEFT JOIN categories c ON c.id = i.category_id
@@ -102,16 +103,80 @@ function pos_search_products(string $q, int $limit = 20): array
     }
     $stmt->bindValue(':lim', max(1, min(50, $limit)), PDO::PARAM_INT);
     $stmt->execute();
-    return $stmt->fetchAll();
+    $rows = $stmt->fetchAll();
+
+    return array_map(static function (array $row): array {
+        $row = pos_enrich_product_for_sale($row);
+        $priced = store_apply_item_pricing($row, $row);
+        $row['price'] = $priced['current_price'];
+        $row['list_price'] = $priced['list_price'];
+
+        return $row;
+    }, $rows);
+}
+
+function pos_enrich_product_for_sale(array $row): array
+{
+    $id = (int) ($row['id'] ?? 0);
+    $row['is_phone'] = !empty($row['is_phone']);
+    $row['variant_label'] = '';
+    if ($row['is_phone'] && $id > 0) {
+        $variants = store_get_item_storage_variants($id);
+        if ($variants) {
+            $row['variant_label'] = $variants[0]['label'] ?? '';
+        }
+    }
+
+    return $row;
+}
+
+function pos_get_storage_variant(int $variantId): ?array
+{
+    if ($variantId <= 0) {
+        return null;
+    }
+    $stmt = db()->prepare(
+        'SELECT sv.id, sv.item_id, sv.ram, sv.rom, sv.price, sv.cost_price, sv.stock_status,
+                i.name AS item_name, i.price AS item_price, i.cost_price AS item_cost, i.is_phone
+         FROM item_storage_variants sv
+         INNER JOIN items i ON i.id = sv.item_id
+         WHERE sv.id = :id AND i.is_active = TRUE'
+    );
+    $stmt->execute(['id' => $variantId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+
+    return [
+        'id' => (int) $row['id'],
+        'item_id' => (int) $row['item_id'],
+        'ram' => trim($row['ram'] ?? ''),
+        'rom' => trim($row['rom'] ?? ''),
+        'price' => $row['price'] !== null && $row['price'] !== '' ? (float) $row['price'] : null,
+        'cost_price' => (float) ($row['cost_price'] ?? 0),
+        'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
+        'item_name' => $row['item_name'],
+        'item_price' => (float) $row['item_price'],
+        'item_cost' => (float) $row['item_cost'],
+        'label' => store_format_storage_variant_label(trim($row['ram'] ?? ''), trim($row['rom'] ?? '')),
+    ];
 }
 
 function pos_get_product(int $id): ?array
 {
     $stmt = db()->prepare(
-        'SELECT id, name, price, cost_price, stock_quantity FROM items WHERE id = :id AND is_active = TRUE'
+        'SELECT id, name, price, cost_price, stock_quantity, is_phone FROM items WHERE id = :id AND is_active = TRUE'
     );
     $stmt->execute(['id' => $id]);
-    return $stmt->fetch() ?: null;
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+
+    $row = pos_enrich_product_for_sale($row);
+
+    return store_apply_item_pricing($row, $row);
 }
 
 function pos_search_customers(string $q, int $limit = 20): array
@@ -347,19 +412,29 @@ function pos_create_invoice(array $header, array $lines, int $staffId): int
             if (!$product) {
                 throw new RuntimeException('Product not found.');
             }
-            $qty = max(1, (int) ($line['quantity'] ?? 1));
+            $qty = !empty($product['is_phone'])
+                ? 1
+                : max(1, (int) ($line['quantity'] ?? 1));
             if ((int) $product['stock_quantity'] < $qty) {
                 throw new RuntimeException('Insufficient stock for ' . $product['name']);
             }
+
             $unitPrice = isset($line['unit_price']) ? (float) $line['unit_price'] : (float) $product['price'];
+            $costSnapshot = (float) $product['cost_price'];
+            $nameSnapshot = $product['name'];
+            $label = trim((string) ($product['variant_label'] ?? ''));
+            if ($label !== '') {
+                $nameSnapshot .= ' (' . $label . ')';
+            }
+
             $lineDiscount = max(0, (float) ($line['discount'] ?? 0));
             $lineTotal = max(0, ($unitPrice * $qty) - $lineDiscount);
             $subtotal += $lineTotal;
             $preparedLines[] = [
                 'product_id' => $productId,
-                'product_name_snapshot' => $product['name'],
+                'product_name_snapshot' => $nameSnapshot,
                 'unit_price' => $unitPrice,
-                'cost_price_snapshot' => (float) $product['cost_price'],
+                'cost_price_snapshot' => $costSnapshot,
                 'quantity' => $qty,
                 'discount' => $lineDiscount,
                 'line_total' => $lineTotal,
@@ -422,8 +497,17 @@ function pos_create_invoice(array $header, array $lines, int $staffId): int
                 'disc' => $pl['discount'],
                 'lt' => $pl['line_total'],
             ]);
-            $pdo->prepare('UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id')
-                ->execute(['q' => $pl['quantity'], 'id' => $pl['product_id']]);
+            $soldPhone = $pdo->prepare('SELECT is_phone FROM items WHERE id = :id');
+            $soldPhone->execute(['id' => $pl['product_id']]);
+            $isSoldPhone = (bool) $soldPhone->fetchColumn();
+            if ($isSoldPhone) {
+                $pdo->prepare(
+                    "UPDATE items SET stock_quantity = 0, stock_status = 'out_of_stock', is_active = FALSE WHERE id = :id"
+                )->execute(['id' => $pl['product_id']]);
+            } else {
+                $pdo->prepare('UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id')
+                    ->execute(['q' => $pl['quantity'], 'id' => $pl['product_id']]);
+            }
         }
 
         if ($paid > 0) {
@@ -553,8 +637,9 @@ function pos_create_return(int $invoiceItemId, int $qty, string $reason, int $st
         $pdo->prepare('UPDATE pos_invoice_items SET returned_quantity = returned_quantity + :q WHERE id = :id')
             ->execute(['q' => $qty, 'id' => $invoiceItemId]);
         if ($line['product_id']) {
-            $pdo->prepare('UPDATE items SET stock_quantity = stock_quantity + :q WHERE id = :id')
-                ->execute(['q' => $qty, 'id' => $line['product_id']]);
+            $pdo->prepare(
+                "UPDATE items SET stock_quantity = 1, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
+            )->execute(['id' => $line['product_id']]);
         }
         $pdo->commit();
         pos_audit($staffId, 'return_created', 'return', $returnId, $line['product_name_snapshot']);
@@ -928,8 +1013,9 @@ function pos_cancel_invoice(int $id, int $staffId, bool $isManager): void
         foreach ($inv['items'] as $item) {
             $restock = (int) $item['quantity'] - (int) $item['returned_quantity'];
             if ($restock > 0 && $item['product_id']) {
-                $pdo->prepare('UPDATE items SET stock_quantity = stock_quantity + :q WHERE id = :id')
-                    ->execute(['q' => $restock, 'id' => $item['product_id']]);
+                $pdo->prepare(
+                    "UPDATE items SET stock_quantity = 1, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
+                )->execute(['id' => $item['product_id']]);
             }
         }
         $pdo->prepare("UPDATE pos_invoices SET status = 'cancelled' WHERE id = :id")->execute(['id' => $id]);

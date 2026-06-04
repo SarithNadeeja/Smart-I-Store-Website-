@@ -8,7 +8,7 @@ require_once __DIR__ . '/includes/products-data.php';
 require_once __DIR__ . '/includes/icons.php';
 require_once __DIR__ . '/includes/navbar.php';
 
-$all_products = store_get_all_products();
+$all_products = store_group_products_for_listing(store_get_all_products());
 $active_category = (int) ($_GET['category'] ?? 0);
 $active_stock = trim($_GET['stock'] ?? '');
 if ($active_stock !== '') {

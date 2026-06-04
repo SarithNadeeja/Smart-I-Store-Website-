@@ -204,7 +204,6 @@ admin_render_header('Items', 'items');
                     <th>Model</th>
                     <th>Category</th>
                     <th>Price</th>
-                    <th>Qty</th>
                     <th>Stock</th>
                     <th>Visible</th>
                     <th></th>
@@ -226,7 +225,6 @@ admin_render_header('Items', 'items');
                     <td><?php echo htmlspecialchars($item['model_name'] ?? '—'); ?></td>
                     <td><?php echo htmlspecialchars($item['category_title'] ?? '—'); ?></td>
                     <td>Rs. <?php echo number_format((float) $item['price'], 0); ?></td>
-                    <td><?php echo (int) ($item['stock_quantity'] ?? 0); ?></td>
                     <td>
                         <span class="admin-stock-badge admin-stock-badge--<?php echo htmlspecialchars(store_normalize_stock_status($item['stock_status'] ?? 'in_stock')); ?>">
                             <?php echo htmlspecialchars(store_stock_label(store_normalize_stock_status($item['stock_status'] ?? 'in_stock'))); ?>
