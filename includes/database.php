@@ -25,6 +25,7 @@ function db(): PDO
 
     db_migrate($pdo);
     db_seed_admin($pdo);
+    db_seed_pos($pdo);
 
     return $pdo;
 }
@@ -169,6 +170,312 @@ function db_migrate_upgrade(PDO $pdo): void
         CREATE INDEX IF NOT EXISTS idx_item_storage_variants_item ON item_storage_variants(item_id);
         CREATE INDEX IF NOT EXISTS idx_item_system_specs_item ON item_system_specs(item_id);
     ");
+
+    $hasQtyCol = $pdo->query(
+        "SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'items' AND column_name = 'stock_quantity'"
+    )->fetchColumn();
+
+    if (!$hasQtyCol) {
+        $pdo->exec(
+            'ALTER TABLE items ADD COLUMN stock_quantity INT NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0)'
+        );
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS sales_ledger_entries (
+            id SERIAL PRIMARY KEY,
+            entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            direction VARCHAR(10) NOT NULL CHECK (direction IN ('income', 'expense')),
+            income_kind VARCHAR(10) NULL CHECK (income_kind IN ('sale', 'other')),
+            amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+            item_id INT REFERENCES items(id) ON DELETE SET NULL,
+            sale_quantity INT NOT NULL DEFAULT 1 CHECK (sale_quantity >= 1),
+            category_label VARCHAR(200) NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sales_ledger_date ON sales_ledger_entries(entry_date);
+        CREATE INDEX IF NOT EXISTS idx_sales_ledger_direction ON sales_ledger_entries(direction);
+        CREATE INDEX IF NOT EXISTS idx_sales_ledger_label ON sales_ledger_entries(category_label);
+        CREATE INDEX IF NOT EXISTS idx_sales_ledger_item ON sales_ledger_entries(item_id);
+    ");
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS pos_users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(64) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            must_change_credentials BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_customers (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(160) NOT NULL,
+            phone VARCHAR(40) NOT NULL DEFAULT '',
+            email VARCHAR(120) NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_suppliers (
+            id SERIAL PRIMARY KEY,
+            company_name VARCHAR(160) NOT NULL,
+            contact_name VARCHAR(120) NOT NULL DEFAULT '',
+            phone VARCHAR(40) NOT NULL DEFAULT '',
+            email VARCHAR(120) NOT NULL DEFAULT '',
+            address TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_ledger_entries (
+            id SERIAL PRIMARY KEY,
+            entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            direction VARCHAR(10) NOT NULL CHECK (direction IN ('income', 'expense')),
+            income_kind VARCHAR(10) NULL CHECK (income_kind IN ('sale', 'other')),
+            sale_channel VARCHAR(10) NULL CHECK (sale_channel IN ('physical', 'online')),
+            amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+            item_id INT REFERENCES items(id) ON DELETE SET NULL,
+            sale_quantity INT NOT NULL DEFAULT 1 CHECK (sale_quantity >= 1),
+            category_label VARCHAR(200) NOT NULL DEFAULT '',
+            customer_id INT REFERENCES pos_customers(id) ON DELETE SET NULL,
+            supplier_id INT REFERENCES pos_suppliers(id) ON DELETE SET NULL,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pos_customers_name ON pos_customers(name);
+        CREATE INDEX IF NOT EXISTS idx_pos_customers_phone ON pos_customers(phone);
+        CREATE INDEX IF NOT EXISTS idx_pos_suppliers_company ON pos_suppliers(company_name);
+        CREATE INDEX IF NOT EXISTS idx_pos_ledger_date ON pos_ledger_entries(entry_date);
+        CREATE INDEX IF NOT EXISTS idx_pos_ledger_direction ON pos_ledger_entries(direction);
+        CREATE INDEX IF NOT EXISTS idx_pos_ledger_channel ON pos_ledger_entries(sale_channel);
+        CREATE INDEX IF NOT EXISTS idx_pos_ledger_customer ON pos_ledger_entries(customer_id);
+        CREATE INDEX IF NOT EXISTS idx_pos_ledger_supplier ON pos_ledger_entries(supplier_id);
+    ");
+
+    db_migrate_pos_cloud($pdo);
+}
+
+function db_migrate_pos_cloud(PDO $pdo): void
+{
+    $itemCols = [
+        'cost_price' => 'NUMERIC(12, 2) NOT NULL DEFAULT 0',
+        'reorder_level' => 'INT NOT NULL DEFAULT 5',
+    ];
+    foreach ($itemCols as $col => $def) {
+        $exists = $pdo->query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'items' AND column_name = " . $pdo->quote($col)
+        )->fetchColumn();
+        if (!$exists) {
+            $pdo->exec("ALTER TABLE items ADD COLUMN {$col} {$def}");
+        }
+    }
+
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS pos_staff (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(120) NOT NULL DEFAULT '',
+            username VARCHAR(64) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            role VARCHAR(20) NOT NULL DEFAULT 'cashier'
+                CHECK (role IN ('cashier', 'manager')),
+            status VARCHAR(20) NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active', 'inactive')),
+            must_change_credentials BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_invoices (
+            id SERIAL PRIMARY KEY,
+            invoice_no VARCHAR(32) NOT NULL UNIQUE,
+            customer_id INT REFERENCES pos_customers(id) ON DELETE SET NULL,
+            cashier_id INT NOT NULL REFERENCES pos_staff(id),
+            subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            discount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            paid_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            balance NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            payment_method VARCHAR(30) NOT NULL DEFAULT 'cash',
+            payment_status VARCHAR(20) NOT NULL DEFAULT 'paid'
+                CHECK (payment_status IN ('paid', 'partial', 'unpaid')),
+            status VARCHAR(20) NOT NULL DEFAULT 'completed'
+                CHECK (status IN ('completed', 'cancelled')),
+            warranty_period_days INT NOT NULL DEFAULT 0,
+            warranty_start_date DATE,
+            warranty_end_date DATE,
+            warranty_note TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_invoice_items (
+            id SERIAL PRIMARY KEY,
+            invoice_id INT NOT NULL REFERENCES pos_invoices(id) ON DELETE CASCADE,
+            product_id INT REFERENCES items(id) ON DELETE SET NULL,
+            product_name_snapshot VARCHAR(200) NOT NULL,
+            unit_price NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            cost_price_snapshot NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            quantity INT NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+            discount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            line_total NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            returned_quantity INT NOT NULL DEFAULT 0 CHECK (returned_quantity >= 0)
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_invoice_payments (
+            id SERIAL PRIMARY KEY,
+            invoice_id INT NOT NULL REFERENCES pos_invoices(id) ON DELETE CASCADE,
+            amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+            payment_method VARCHAR(30) NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            created_by INT NOT NULL REFERENCES pos_staff(id),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_returns (
+            id SERIAL PRIMARY KEY,
+            return_no VARCHAR(32) NOT NULL UNIQUE,
+            invoice_id INT NOT NULL REFERENCES pos_invoices(id),
+            invoice_item_id INT NOT NULL REFERENCES pos_invoice_items(id),
+            product_id INT REFERENCES items(id) ON DELETE SET NULL,
+            quantity INT NOT NULL DEFAULT 1 CHECK (quantity >= 1),
+            reason TEXT NOT NULL DEFAULT '',
+            refund_amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            created_by INT NOT NULL REFERENCES pos_staff(id),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_repair_jobs (
+            id SERIAL PRIMARY KEY,
+            job_no VARCHAR(32) NOT NULL UNIQUE,
+            customer_id INT NOT NULL REFERENCES pos_customers(id),
+            device_brand VARCHAR(80) NOT NULL DEFAULT '',
+            device_model VARCHAR(120) NOT NULL DEFAULT '',
+            imei_serial VARCHAR(80) NOT NULL DEFAULT '',
+            issue_description TEXT NOT NULL,
+            estimated_cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            advance_payment NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            final_cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            parts_cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid'
+                CHECK (payment_status IN ('paid', 'partial', 'unpaid')),
+            status VARCHAR(30) NOT NULL DEFAULT 'Received',
+            received_by INT NOT NULL REFERENCES pos_staff(id),
+            technician_name VARCHAR(120) NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            repair_warranty_days INT NOT NULL DEFAULT 0,
+            warranty_end_date DATE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            delivered_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_repair_payments (
+            id SERIAL PRIMARY KEY,
+            repair_job_id INT NOT NULL REFERENCES pos_repair_jobs(id) ON DELETE CASCADE,
+            amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+            payment_method VARCHAR(30) NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            created_by INT NOT NULL REFERENCES pos_staff(id),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_repair_parts (
+            id SERIAL PRIMARY KEY,
+            repair_job_id INT NOT NULL REFERENCES pos_repair_jobs(id) ON DELETE CASCADE,
+            part_description VARCHAR(200) NOT NULL,
+            cost NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_expenses (
+            id SERIAL PRIMARY KEY,
+            expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+            category VARCHAR(40) NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            amount NUMERIC(12, 2) NOT NULL CHECK (amount > 0),
+            created_by INT NOT NULL REFERENCES pos_staff(id),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_cash_drawer_days (
+            id SERIAL PRIMARY KEY,
+            business_date DATE NOT NULL UNIQUE,
+            opening_cash NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            cash_sales NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            repair_cash_income NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            expenses NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            cash_out NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            expected_closing_cash NUMERIC(12, 2) NOT NULL DEFAULT 0,
+            actual_closing_cash NUMERIC(12, 2),
+            difference NUMERIC(12, 2),
+            opened_by INT NOT NULL REFERENCES pos_staff(id),
+            closed_by INT REFERENCES pos_staff(id),
+            status VARCHAR(10) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            closed_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS pos_audit_log (
+            id SERIAL PRIMARY KEY,
+            staff_id INT REFERENCES pos_staff(id) ON DELETE SET NULL,
+            action VARCHAR(60) NOT NULL,
+            entity_type VARCHAR(40) NOT NULL DEFAULT '',
+            entity_id INT,
+            details TEXT NOT NULL DEFAULT '',
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_date ON pos_invoices(created_at);
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_customer ON pos_invoices(customer_id);
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_status ON pos_invoices(payment_status);
+        CREATE INDEX IF NOT EXISTS idx_pos_invoice_items_invoice ON pos_invoice_items(invoice_id);
+        CREATE INDEX IF NOT EXISTS idx_pos_repair_jobs_status ON pos_repair_jobs(status);
+        CREATE INDEX IF NOT EXISTS idx_pos_repair_jobs_customer ON pos_repair_jobs(customer_id);
+        CREATE INDEX IF NOT EXISTS idx_pos_expenses_date ON pos_expenses(expense_date);
+        CREATE INDEX IF NOT EXISTS idx_pos_audit_created ON pos_audit_log(created_at);
+    ");
+
+    $repairProfitCol = $pdo->query(
+        "SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'pos_repair_jobs' AND column_name = 'repair_profit'"
+    )->fetchColumn();
+    if (!$repairProfitCol) {
+        $pdo->exec(
+            'ALTER TABLE pos_repair_jobs ADD COLUMN repair_profit NUMERIC(12, 2) NOT NULL DEFAULT 0'
+        );
+        $pdo->exec(
+            'UPDATE pos_repair_jobs r SET parts_cost = COALESCE(x.expense, 0),
+             repair_profit = CASE WHEN r.final_cost > 0 THEN GREATEST(0, r.final_cost - COALESCE(x.expense, 0)) ELSE 0 END
+             FROM (
+                 SELECT repair_job_id, SUM(cost) AS expense FROM pos_repair_parts GROUP BY repair_job_id
+             ) x WHERE r.id = x.repair_job_id'
+        );
+    }
+
+    $staffCount = (int) $pdo->query('SELECT COUNT(*) FROM pos_staff')->fetchColumn();
+    if ($staffCount === 0) {
+        $hasUsers = (int) $pdo->query(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'pos_users'"
+        )->fetchColumn();
+        if ($hasUsers) {
+            $pdo->exec(
+                "INSERT INTO pos_staff (name, username, password_hash, role, status, must_change_credentials)
+                 SELECT COALESCE(NULLIF(username, ''), 'Staff'), username, password_hash, 'manager', 'active',
+                        COALESCE(must_change_credentials, FALSE)
+                 FROM pos_users
+                 ON CONFLICT (username) DO NOTHING"
+            );
+        }
+    }
 }
 
 function db_seed_admin(PDO $pdo): void
@@ -185,6 +492,26 @@ function db_seed_admin(PDO $pdo): void
     $stmt->execute([
         'username' => 'admin',
         'hash' => password_hash('admin', PASSWORD_DEFAULT),
+    ]);
+}
+
+function db_seed_pos(PDO $pdo): void
+{
+    $count = (int) $pdo->query('SELECT COUNT(*) FROM pos_staff')->fetchColumn();
+    if ($count > 0) {
+        return;
+    }
+
+    $stmt = $pdo->prepare(
+        'INSERT INTO pos_staff (name, username, password_hash, role, status, must_change_credentials)
+         VALUES (:name, :username, :hash, :role, :status, TRUE)'
+    );
+    $stmt->execute([
+        'name' => 'Manager',
+        'username' => 'admin',
+        'hash' => password_hash('admin', PASSWORD_DEFAULT),
+        'role' => 'manager',
+        'status' => 'active',
     ]);
 }
 

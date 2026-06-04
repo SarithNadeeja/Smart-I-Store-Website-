@@ -8,6 +8,7 @@ $brandName = trim($phone['brand'] ?? '');
 $brandAttr = htmlspecialchars($brandName, ENT_QUOTES, 'UTF-8');
 $brandId = (int) ($phone['brand_id'] ?? 0);
 $modelName = trim($phone['model'] ?? '');
+$modelId = (int) ($phone['model_id'] ?? 0);
 $modelAttr = htmlspecialchars($modelName, ENT_QUOTES, 'UTF-8');
 $categoryId = (int) ($phone['category_id'] ?? 0);
 $stockStatus = store_normalize_stock_status($phone['stock_status'] ?? 'in_stock');
@@ -21,6 +22,7 @@ $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
          data-brand="<?php echo $brandAttr; ?>"
          data-brand-id="<?php echo $brandId; ?>"
          data-model="<?php echo $modelAttr; ?>"
+         data-model-id="<?php echo $modelId; ?>"
          data-stock="<?php echo htmlspecialchars($stockStatus, ENT_QUOTES, 'UTF-8'); ?>"
          data-category-id="<?php echo $categoryId; ?>"
          data-price="<?php echo (float) ($phone['price'] ?? 0); ?>"

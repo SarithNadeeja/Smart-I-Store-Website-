@@ -37,13 +37,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <?php admin_theme_head_script(); ?>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup Account | Admin</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="<?php echo admin_url('assets/admin-theme.css'); ?>">
     <link rel="stylesheet" href="<?php echo admin_url('assets/admin.css'); ?>">
 </head>
 <body class="admin-auth-body">
+    <div class="admin-auth-theme-wrap">
+        <?php admin_theme_toggle(); ?>
+    </div>
     <div class="admin-auth-card admin-auth-card--wide">
         <h1>First-time setup</h1>
         <p class="admin-auth-sub">For security, change the default username and password before continuing.</p>
@@ -67,5 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn btn-primary btn-block">Save and continue</button>
         </form>
     </div>
+<script src="<?php echo admin_url('assets/admin-theme.js'); ?>"></script>
 </body>
 </html>

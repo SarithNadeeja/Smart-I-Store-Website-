@@ -3,7 +3,10 @@ require_once __DIR__ . '/includes/config.php';
 $show_intro = intro_video_exists();
 $page_title = 'Home';
 $body_class = 'page-home' . ($show_intro ? ' has-intro-overlay' : '');
-$extra_js = $show_intro ? [asset_url('js/hero-intro.js')] : [];
+$extra_js = [asset_url('js/category-carousel.js')];
+if ($show_intro) {
+    $extra_js[] = asset_url('js/hero-intro.js');
+}
 $intro_reload_skip = $show_intro;
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/products-data.php';
@@ -34,29 +37,19 @@ require_once __DIR__ . '/includes/navbar.php';
         </div>
     </section>
 
-    <!-- Categories -->
+    <?php if (!empty($category_slides)): ?>
+    <?php require __DIR__ . '/includes/category-carousels.php'; ?>
+    <?php else: ?>
     <section class="section section-gray" id="categories">
         <div class="container">
             <div class="section-header reveal-up">
                 <span class="section-label">Shop by Category</span>
                 <h2 class="section-title">Find Your Perfect Device</h2>
             </div>
-            <div class="category-grid">
-                <?php if (!$categories): ?>
-                <p class="section-desc">No categories yet. Add them in the <a href="<?php echo base_url('admin/categories.php'); ?>">admin panel</a>.</p>
-                <?php endif; ?>
-                <?php foreach ($categories as $i => $cat): ?>
-                <a href="<?php echo page_url('products.php?category=' . (int) $cat['id']); ?>" class="category-card glass-card reveal-up" data-delay="<?php echo $i * 0.08; ?>">
-                    <span class="category-icon"><?php echo icon($cat['icon']); ?></span>
-                    <h3 class="category-title"><?php echo htmlspecialchars($cat['title']); ?></h3>
-                    <p class="category-desc"><?php echo htmlspecialchars($cat['desc']); ?></p>
-                    <span class="category-count"><?php echo htmlspecialchars($cat['count']); ?></span>
-                    <span class="category-arrow"><?php echo icon('arrow-right'); ?></span>
-                </a>
-                <?php endforeach; ?>
-            </div>
+            <p class="section-desc">No categories with products yet. Add categories and items in the <a href="<?php echo base_url('admin/'); ?>">admin panel</a>.</p>
         </div>
     </section>
+    <?php endif; ?>
 
     <!-- Why Choose Us -->
     <section class="section section-yellow" id="why-us">

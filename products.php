@@ -16,6 +16,9 @@ if ($active_stock !== '') {
 }
 $active_brand = trim($_GET['brand'] ?? '');
 $active_model = trim($_GET['model'] ?? '');
+if ($active_brand === '') {
+    $active_model = '';
+}
 $active_sort = trim($_GET['sort'] ?? '');
 $stock_labels = store_stock_statuses();
 
@@ -77,8 +80,8 @@ function product_passes_filters(array $phone, int $category, string $brand, stri
                         </div>
                         <div class="product-filters__group product-filters__group--select" id="filter-group-model" hidden>
                             <label class="product-filters__label" for="filter-model">Model</label>
-                            <select class="product-filters__select" id="filter-model" name="model" aria-label="Filter by model">
-                                <option value="">All models</option>
+                            <select class="product-filters__select" id="filter-model" name="model" aria-label="Filter by model" disabled>
+                                <option value="">Select a brand first</option>
                             </select>
                         </div>
                         <div class="product-filters__group product-filters__group--select" id="filter-group-stock" hidden>

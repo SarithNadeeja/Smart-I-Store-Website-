@@ -4,6 +4,7 @@ require_once __DIR__ . '/store.php';
 
 $featured_phones = store_get_featured_phones(4);
 $categories = store_get_categories();
+$category_slides = store_get_home_category_slides();
 
 $why_choose_us = [
     [

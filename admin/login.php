@@ -14,7 +14,7 @@ $dbError = '';
 try {
     db();
 } catch (Throwable $e) {
-    $dbError = 'Database connection failed. Ensure PostgreSQL is running and database "smartistore" exists.';
+    $dbError = 'Database connection failed. Check PostgreSQL and database "' . DB_NAME . '" for user "' . DB_USER . '".';
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -45,13 +45,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <?php admin_theme_head_script(); ?>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login | <?php echo htmlspecialchars(SITE_NAME); ?></title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="<?php echo admin_url('assets/admin-theme.css'); ?>">
     <link rel="stylesheet" href="<?php echo admin_url('assets/admin.css'); ?>">
 </head>
 <body class="admin-auth-body">
+    <div class="admin-auth-theme-wrap">
+        <?php admin_theme_toggle(); ?>
+    </div>
     <div class="admin-auth-card">
         <h1>Admin Login</h1>
         <p class="admin-auth-sub">Sign in to manage <?php echo htmlspecialchars(SITE_NAME); ?></p>
@@ -73,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <button type="submit" class="btn btn-primary btn-block">Sign in</button>
         </form>
-        <p class="admin-auth-hint">Default first login: <code>admin</code> / <code>admin</code> — you will be asked to change these immediately.</p>
     </div>
+<script src="<?php echo admin_url('assets/admin-theme.js'); ?>"></script>
 </body>
 </html>

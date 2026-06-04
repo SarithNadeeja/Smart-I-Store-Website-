@@ -53,6 +53,7 @@ function store_map_item_row(array $row): array
         'brand' => $brand,
         'brand_id' => isset($row['brand_id']) ? (int) $row['brand_id'] : 0,
         'model' => $model,
+        'model_id' => isset($row['model_id']) ? (int) $row['model_id'] : 0,
         'meta' => $meta,
         'price' => (float) $row['price'],
         'tag' => $row['tag'] !== '' ? $row['tag'] : 'New',
@@ -62,6 +63,7 @@ function store_map_item_row(array $row): array
         'is_phone' => !empty($row['is_phone']),
         'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
         'stock_label' => store_stock_label(store_normalize_stock_status($row['stock_status'] ?? 'in_stock')),
+        'stock_quantity' => max(0, (int) ($row['stock_quantity'] ?? 0)),
     ];
 }
 
@@ -374,7 +376,7 @@ function store_get_categories(): array
         LEFT JOIN items i ON i.category_id = c.id
         WHERE c.is_active = TRUE
         GROUP BY c.id
-        ORDER BY c.id ASC
+        ORDER BY c.sort_order ASC, c.id ASC
     ";
 
     $rows = db()->query($sql)->fetchAll();
@@ -396,6 +398,47 @@ function store_get_categories(): array
     }
 
     return $out;
+}
+
+function store_get_products_by_category(int $categoryId, int $limit = 50): array
+{
+    if (!db_available() || $categoryId <= 0) {
+        return [];
+    }
+
+    $limit = max(1, min(100, $limit));
+    $sql = store_item_select_sql() . "
+        WHERE i.is_active = TRUE AND i.category_id = :cid
+        ORDER BY i.sort_order ASC, i.id DESC
+        LIMIT :lim
+    ";
+    $stmt = db()->prepare($sql);
+    $stmt->bindValue(':cid', $categoryId, PDO::PARAM_INT);
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return array_map('store_map_item_row', $stmt->fetchAll());
+}
+
+/**
+ * Homepage: each active category that has items, with its products for a carousel.
+ */
+function store_get_home_category_slides(int $limitPerCategory = 50): array
+{
+    $slides = [];
+
+    foreach (store_get_categories() as $cat) {
+        $products = store_get_products_by_category((int) $cat['id'], $limitPerCategory);
+        if ($products === []) {
+            continue;
+        }
+        $slides[] = [
+            'category' => $cat,
+            'products' => $products,
+        ];
+    }
+
+    return $slides;
 }
 
 function store_get_brand_names(): array

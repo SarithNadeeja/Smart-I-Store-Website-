@@ -1,0 +1,18 @@
+<?php
+/**
+ * Copy to config.local.php and adjust for your server (config.local.php is not committed).
+ *
+ * Example — site at domain root (public_html):
+ *   define('BASE_PATH', '');
+ *
+ * Example — site in a subfolder:
+ *   define('BASE_PATH', '/SmartIStore');
+ *
+ * Example — database on hosting:
+ *   define('DB_HOST', '127.0.0.1');
+ *   define('DB_NAME', 'smartistore_db');
+ *   define('DB_USER', 'smartistore_user');
+ *   define('DB_PASS', 'smartistorepwd');
+ */
+
+// define('BASE_PATH', '');

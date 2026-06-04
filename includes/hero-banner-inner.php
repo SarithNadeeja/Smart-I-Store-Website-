@@ -24,6 +24,7 @@ $hero_autoplay = $hero_autoplay ?? false;
         playsinline
         webkit-playsinline
         <?php echo $hero_autoplay ? 'autoplay' : ''; ?>
+        loop
         preload="auto"
         disablePictureInPicture
         aria-hidden="true"
@@ -40,23 +41,4 @@ $hero_autoplay = $hero_autoplay ?? false;
     <?php endif; ?>
 </div>
 
-<h1 class="hero-banner__showcase">
-    <span class="visually-hidden">Smart I Store — Future Mobile</span>
-    <span class="hero-banner__brand hero-banner__brand--split hero-banner__brand--left" aria-hidden="true">
-        <span class="hero-banner__brand-line">
-            <span class="hero-banner__brand-text">Smart</span>
-        </span>
-        <span class="hero-banner__brand-sub">Future</span>
-    </span>
-    <span class="hero-banner__brand hero-banner__brand--split hero-banner__brand--right" aria-hidden="true">
-        <span class="hero-banner__brand-line">
-            <span class="hero-banner__brand-accent">I</span><span class="hero-banner__brand-text"> Store</span>
-        </span>
-        <span class="hero-banner__brand-sub">Mobile</span>
-    </span>
-    <span class="hero-banner__brand-mobile" aria-hidden="true">
-        <span class="hero-banner__brand-mobile-text">
-            Smart <span class="hero-banner__brand-accent">I</span> Store
-        </span>
-    </span>
-</h1>
+<h1 class="visually-hidden">Smart I Store</h1>

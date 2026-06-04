@@ -27,14 +27,13 @@
         if (!ctx) return;
 
         let rafId = null;
-        let ended = false;
         let started = false;
 
         /* Offscreen buffer — chroma only the video frame, not the whole canvas */
         const buffer = document.createElement('canvas');
         const bctx = buffer.getContext('2d', { willReadFrequently: true });
 
-        video.loop = false;
+        video.loop = true;
         video.muted = true;
         video.defaultMuted = true;
         video.volume = 0;
@@ -79,48 +78,22 @@
             return imageData;
         }
 
-        /** Responsive phone scale — desktop stays large; tablet/mobile smaller */
-        function getResponsiveLayout() {
-            const w = window.innerWidth;
-            if (w <= 480) {
-                return { fit: 0.58, topReserve: 100 };
-            }
-            if (w <= 768) {
-                return { fit: 0.65, topReserve: 88 };
-            }
-            if (w <= 1024) {
-                return { fit: 0.78, topReserve: 72 };
-            }
-            return { fit: 0.94, topReserve: 32 };
-        }
-
-        function getVerticalOffset(ch) {
-            const headerH = parseInt(
-                getComputedStyle(document.documentElement).getPropertyValue('--header-h'),
-                10
-            ) || 80;
-            const { topReserve } = getResponsiveLayout();
-            const scale = stage.clientHeight > 0 ? ch / stage.clientHeight : 1;
-            return Math.round((headerH + topReserve) * scale);
-        }
-
+        /** Scale video to cover the full hero (like object-fit: cover) */
         function getCoverRect(vw, vh, cw, ch) {
             const videoAspect = vw / vh;
             const canvasAspect = cw / ch;
             let dw, dh, dx, dy;
-            const offsetY = getVerticalOffset(ch);
-            const { fit } = getResponsiveLayout();
 
             if (videoAspect > canvasAspect) {
-                dh = Math.round(ch * fit);
-                dw = Math.round(dh * videoAspect);
+                dh = ch;
+                dw = Math.round(ch * videoAspect);
                 dx = Math.round((cw - dw) / 2);
-                dy = offsetY;
+                dy = 0;
             } else {
-                dw = Math.round(cw * fit);
-                dh = Math.round(dw / videoAspect);
-                dx = Math.round((cw - dw) / 2);
-                dy = Math.round((ch - dh) / 2) + offsetY;
+                dw = cw;
+                dh = Math.round(cw / videoAspect);
+                dx = 0;
+                dy = Math.round((ch - dh) / 2);
             }
 
             return { dw, dh, dx, dy };
@@ -158,7 +131,7 @@
 
         function loop() {
             drawFrame();
-            if (!ended && !video.paused && !video.ended) {
+            if (!video.paused) {
                 rafId = requestAnimationFrame(loop);
             }
         }
@@ -184,16 +157,6 @@
             }
         }
 
-        function onEnded() {
-            ended = true;
-            cancelAnimationFrame(rafId);
-            if (video.duration && isFinite(video.duration)) {
-                video.currentTime = Math.max(0, video.duration - 0.05);
-            }
-            video.pause();
-            drawFrame();
-        }
-
         function onReady() {
             resize();
             drawFrame();
@@ -208,7 +171,6 @@
             }
         }
 
-        video.addEventListener('ended', onEnded);
         video.addEventListener('error', function () {
             console.error('Hero video error. URL:', video.currentSrc || video.src);
         });
@@ -229,7 +191,7 @@
         /* Extra kick if autoplay attribute alone started the video */
         video.addEventListener('playing', function () {
             if (!started) onReady();
-            else if (!rafId && !ended) loop();
+            else if (!rafId && !video.paused) loop();
         });
     })();
 

@@ -21,6 +21,7 @@
     var panel = document.getElementById('store-bot-panel');
     var messagesEl = document.getElementById('store-bot-messages');
     var composer = document.getElementById('store-bot-composer');
+    var bodyEl = document.getElementById('store-bot-body');
     var boot = null;
     var state = 'start';
     var ctx = { brandId: 0, categoryId: 0, repairBrand: '' };
@@ -29,6 +30,36 @@
         var x = Number(n);
         if (!isFinite(x)) return '0';
         return 'Rs. ' + Math.round(x).toLocaleString('en-LK');
+    }
+
+    function updateScrollState() {
+        if (!bodyEl) return;
+        var canScroll = bodyEl.scrollHeight > bodyEl.clientHeight + 6;
+        var atBottom =
+            bodyEl.scrollHeight - bodyEl.scrollTop - bodyEl.clientHeight < 12;
+        bodyEl.classList.toggle('has-overflow', canScroll);
+        bodyEl.classList.toggle('at-bottom', atBottom);
+    }
+
+    function refreshLayout(scrollToEnd) {
+        requestAnimationFrame(function () {
+            if (!bodyEl) return;
+            if (scrollToEnd !== false) {
+                bodyEl.scrollTop = bodyEl.scrollHeight;
+            }
+            updateScrollState();
+        });
+    }
+
+    if (bodyEl) {
+        bodyEl.addEventListener('scroll', updateScrollState, { passive: true });
+        window.addEventListener(
+            'resize',
+            function () {
+                if (!panel.hidden) updateScrollState();
+            },
+            { passive: true }
+        );
     }
 
     function appendBubble(text, isBot) {
@@ -42,7 +73,7 @@
         });
         wrap.appendChild(bubble);
         messagesEl.appendChild(wrap);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        refreshLayout();
     }
 
     function clearComposer() {
@@ -65,6 +96,7 @@
             row.appendChild(btn);
         });
         composer.appendChild(row);
+        refreshLayout();
     }
 
     function showBudgetForm(onSubmit) {
@@ -91,6 +123,7 @@
         });
         composer.appendChild(form);
         input.focus();
+        refreshLayout();
     }
 
     function contactActions() {
@@ -477,6 +510,10 @@
         panel.hidden = false;
         toggle.setAttribute('aria-expanded', 'true');
         document.body.classList.add('store-bot-open');
+        refreshLayout(true);
+        setTimeout(function () {
+            refreshLayout(true);
+        }, 80);
         if (!messagesEl.dataset.inited) {
             messagesEl.dataset.inited = '1';
             fetch(apiBase + '?action=bootstrap')

@@ -42,6 +42,42 @@ function uploads_save_image(array $file): ?string
     return 'items/' . $name;
 }
 
+/**
+ * Normalize $_FILES entry for a multi-file input (handles one or many uploads).
+ *
+ * @return list<array{name: string, type: string, tmp_name: string, error: int, size: int}>
+ */
+function uploads_collect_files(array $files): array
+{
+    if (!isset($files['name']) || $files['name'] === '' || ($files['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return [];
+    }
+
+    if (!is_array($files['name'])) {
+        return [$files];
+    }
+
+    $out = [];
+    $count = count($files['name']);
+    for ($i = 0; $i < $count; $i++) {
+        if (($files['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            continue;
+        }
+        if (($files['name'][$i] ?? '') === '') {
+            continue;
+        }
+        $out[] = [
+            'name' => $files['name'][$i],
+            'type' => $files['type'][$i] ?? '',
+            'tmp_name' => $files['tmp_name'][$i] ?? '',
+            'error' => $files['error'][$i] ?? UPLOAD_ERR_NO_FILE,
+            'size' => $files['size'][$i] ?? 0,
+        ];
+    }
+
+    return $out;
+}
+
 function uploads_delete_file(?string $relativePath): void
 {
     if ($relativePath === null || $relativePath === '') {

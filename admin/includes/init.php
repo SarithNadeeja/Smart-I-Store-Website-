@@ -14,6 +14,28 @@ function admin_url(string $path = ''): string
     return base_url('admin/' . ltrim($path, '/'));
 }
 
+function admin_theme_head_script(): void
+{
+    ?>
+<script>
+(function () {
+    var t = localStorage.getItem('admin-theme');
+    document.documentElement.setAttribute('data-admin-theme', t === 'light' ? 'light' : 'dark');
+})();
+</script>
+    <?php
+}
+
+function admin_theme_toggle(): void
+{
+    ?>
+<div class="admin-theme-toggle" role="group" aria-label="Color theme">
+    <button type="button" class="admin-theme-toggle__btn" data-theme="light" aria-pressed="false">Light</button>
+    <button type="button" class="admin-theme-toggle__btn" data-theme="dark" aria-pressed="false">Dark</button>
+</div>
+    <?php
+}
+
 function admin_csrf_token(): string
 {
     if (empty($_SESSION['admin_csrf'])) {

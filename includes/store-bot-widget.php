@@ -26,7 +26,9 @@ $store_bot_logo = asset_url('images/botlogo.png');
             </div>
             <button type="button" id="store-bot-close" class="store-bot__close" aria-label="Close">&times;</button>
         </header>
-        <div id="store-bot-messages" class="store-bot__messages" aria-live="polite"></div>
-        <div id="store-bot-composer" class="store-bot__composer"></div>
+        <div id="store-bot-body" class="store-bot__body">
+            <div id="store-bot-messages" class="store-bot__messages" aria-live="polite"></div>
+            <div id="store-bot-composer" class="store-bot__composer"></div>
+        </div>
     </div>
 </div>

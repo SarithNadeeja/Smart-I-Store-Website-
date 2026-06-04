@@ -17,12 +17,20 @@ $extra_js = $extra_js ?? [];
     <?php endif; ?>
     <meta name="description" content="<?php echo htmlspecialchars($page_description); ?>">
     <title><?php echo htmlspecialchars($page_title); ?> | <?php echo htmlspecialchars(SITE_NAME); ?></title>
+    <?php if (site_logo_exists()): ?>
+    <link rel="icon" href="<?php echo htmlspecialchars(site_logo_url()); ?>" type="image/jpeg">
+    <?php else: ?>
+    <link rel="icon" href="<?php echo htmlspecialchars(asset_url('images/botlogo.png')); ?>" type="image/png">
+    <?php endif; ?>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Outfit:wght@200;300;400&display=swap" rel="stylesheet">
+    <?php require __DIR__ . '/site-loader-head.php'; ?>
+    <script src="<?php echo asset_url('js/site-loader.js'); ?>" defer></script>
     <link rel="stylesheet" href="<?php echo asset_url('css/style.css'); ?>">
     <?php foreach ($extra_css as $css): ?>
     <link rel="stylesheet" href="<?php echo htmlspecialchars($css); ?>">
     <?php endforeach; ?>
 </head>
 <body class="<?php echo htmlspecialchars($body_class); ?>">
+<?php require __DIR__ . '/site-loader.php'; ?>

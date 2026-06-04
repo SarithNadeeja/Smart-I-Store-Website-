@@ -4,7 +4,13 @@ require_once __DIR__ . '/includes/init.php';
 require_once __DIR__ . '/includes/layout.php';
 
 $pdo = db();
-$id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+$id = 0;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = (int) ($_POST['item_id'] ?? 0);
+}
+if ($id <= 0 && isset($_GET['id'])) {
+    $id = (int) $_GET['id'];
+}
 $item = null;
 $subImages = [];
 
@@ -34,6 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         admin_csrf_verify();
 
         if (($_POST['action'] ?? '') === 'delete_sub_image') {
+            if ($id <= 0) {
+                throw new RuntimeException('Item not found.');
+            }
             $imgId = (int) ($_POST['image_id'] ?? 0);
             $stmt = $pdo->prepare('SELECT image_path FROM item_images WHERE id = :id AND item_id = :item');
             $stmt->execute(['id' => $imgId, 'item' => $id]);
@@ -47,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
+        $isUpdate = $id > 0;
         $name = trim($_POST['name'] ?? '');
         $price = (float) ($_POST['price'] ?? 0);
         $tag = trim($_POST['tag'] ?? '');
@@ -58,6 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $isActive = isset($_POST['is_active']);
         $sortOrder = (int) ($_POST['sort_order'] ?? 0);
         $stockStatus = store_normalize_stock_status($_POST['stock_status'] ?? 'in_stock');
+        $stockQuantity = max(0, (int) ($_POST['stock_quantity'] ?? 0));
+        $costPrice = max(0, (float) ($_POST['cost_price'] ?? 0));
+        $reorderLevel = max(0, (int) ($_POST['reorder_level'] ?? 5));
 
         if ($name === '') {
             throw new RuntimeException('Item name is required.');
@@ -94,11 +107,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        if ($id > 0) {
+        if ($isUpdate) {
             $stmt = $pdo->prepare(
                 'UPDATE items SET category_id = :cid, brand_id = :bid, model_id = :mid, name = :n, price = :p, tag = :t,
                  color = :col, is_phone = :ip, is_featured = :if, main_image = :img, is_active = :a, sort_order = :s,
-                 stock_status = :st
+                 stock_status = :st, stock_quantity = :qty, cost_price = :cost, reorder_level = :reorder
                  WHERE id = :id'
             );
             $stmt->execute([
@@ -115,13 +128,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'a' => $isActive,
                 's' => $sortOrder,
                 'st' => $stockStatus,
+                'qty' => $stockQuantity,
+                'cost' => $costPrice,
+                'reorder' => $reorderLevel,
                 'id' => $id,
             ]);
         } else {
             $stmt = $pdo->prepare(
                 'INSERT INTO items (category_id, brand_id, model_id, name, price, tag, color, is_phone, is_featured,
-                 main_image, is_active, sort_order, stock_status)
-                 VALUES (:cid, :bid, :mid, :n, :p, :t, :col, :ip, :if, :img, :a, :s, :st) RETURNING id'
+                 main_image, is_active, sort_order, stock_status, stock_quantity, cost_price, reorder_level)
+                 VALUES (:cid, :bid, :mid, :n, :p, :t, :col, :ip, :if, :img, :a, :s, :st, :qty, :cost, :reorder) RETURNING id'
             );
             $stmt->execute([
                 'cid' => $categoryId,
@@ -137,39 +153,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'a' => $isActive,
                 's' => $sortOrder,
                 'st' => $stockStatus,
+                'qty' => $stockQuantity,
+                'cost' => $costPrice,
+                'reorder' => $reorderLevel,
             ]);
             $id = (int) $stmt->fetchColumn();
         }
 
-        if (!empty($_FILES['sub_images']['name'][0])) {
+        $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
+        if ($subFiles) {
+            if ($id <= 0) {
+                throw new RuntimeException('Save the item first, then add sub images.');
+            }
+
             $maxSub = store_max_sub_images();
-            $existingSub = $id > 0 ? store_count_item_sub_images($id) : 0;
+            $existingSub = store_count_item_sub_images($id);
             $slotsLeft = $maxSub - $existingSub;
 
             if ($slotsLeft <= 0) {
                 throw new RuntimeException('Maximum of ' . $maxSub . ' sub images allowed per product.');
             }
 
-            $uploaded = 0;
-            $fileCount = count($_FILES['sub_images']['name']);
-            $order = $existingSub;
+            if (count($subFiles) > $slotsLeft) {
+                throw new RuntimeException(
+                    'You can add ' . $slotsLeft . ' more sub image(s) (' . $existingSub . '/' . $maxSub . ' already saved).'
+                );
+            }
 
-            for ($i = 0; $i < $fileCount && $uploaded < $slotsLeft; $i++) {
-                if (($_FILES['sub_images']['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-                    continue;
+            $orderStmt = $pdo->prepare(
+                'SELECT COALESCE(MAX(sort_order), -1) + 1 FROM item_images WHERE item_id = :id'
+            );
+            $orderStmt->execute(['id' => $id]);
+            $order = (int) $orderStmt->fetchColumn();
+
+            $ins = $pdo->prepare(
+                'INSERT INTO item_images (item_id, image_path, sort_order) VALUES (:item, :path, :ord)'
+            );
+            $uploaded = 0;
+            foreach ($subFiles as $file) {
+                if ($uploaded >= $slotsLeft) {
+                    break;
                 }
-                $file = [
-                    'name' => $_FILES['sub_images']['name'][$i],
-                    'type' => $_FILES['sub_images']['type'][$i],
-                    'tmp_name' => $_FILES['sub_images']['tmp_name'][$i],
-                    'error' => $_FILES['sub_images']['error'][$i],
-                    'size' => $_FILES['sub_images']['size'][$i],
-                ];
                 $path = uploads_save_image($file);
                 if ($path) {
-                    $ins = $pdo->prepare(
-                        'INSERT INTO item_images (item_id, image_path, sort_order) VALUES (:item, :path, :ord)'
-                    );
                     $ins->execute(['item' => $id, 'path' => $path, 'ord' => $order++]);
                     $uploaded++;
                 }
@@ -180,8 +206,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $phoneSpecs = store_parse_phone_specs_from_post($_POST);
         store_replace_item_phone_details($pdo, $id, $isPhone, $phoneVariants, $phoneSpecs);
 
-        admin_flash('success', $item ? 'Item updated.' : 'Item created.');
-        header('Location: ' . admin_url('items.php'));
+        $flashMsg = $isUpdate ? 'Item updated.' : 'Item created.';
+        if (!empty($subFiles)) {
+            $flashMsg = $isUpdate
+                ? 'Item updated. Sub images were added to this product.'
+                : 'Item created. Sub images were saved.';
+        }
+        admin_flash('success', $flashMsg);
+        header('Location: ' . admin_url('item-form.php?id=' . $id));
         exit;
     } catch (Throwable $e) {
         admin_flash('error', $e->getMessage());
@@ -210,8 +242,10 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         <?php foreach ($subImages as $img): ?>
         <div class="admin-sub-images__item">
             <img src="<?php echo htmlspecialchars(upload_url($img['image_path'])); ?>" alt="">
-            <form method="post" class="admin-inline-form">
+            <form method="post" class="admin-inline-form"
+                  action="<?php echo htmlspecialchars(admin_url('item-form.php?id=' . $id)); ?>">
                 <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
+                <input type="hidden" name="item_id" value="<?php echo (int) $id; ?>">
                 <input type="hidden" name="action" value="delete_sub_image">
                 <input type="hidden" name="image_id" value="<?php echo (int) $img['id']; ?>">
                 <button type="submit" class="admin-link-btn admin-link-btn--danger">Remove</button>
@@ -222,8 +256,12 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
 
     <?php endif; ?>
 
-    <form method="post" enctype="multipart/form-data" class="admin-form" id="item-form">
+    <form method="post" enctype="multipart/form-data" class="admin-form" id="item-form"
+          action="<?php echo htmlspecialchars(admin_url('item-form.php' . ($id > 0 ? '?id=' . $id : ''))); ?>">
         <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
+        <?php if ($id > 0): ?>
+        <input type="hidden" name="item_id" value="<?php echo (int) $id; ?>">
+        <?php endif; ?>
 
         <div class="admin-field">
             <label for="category_id">Category</label>
@@ -265,15 +303,34 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($item['name'] ?? ''); ?>" required>
         </div>
 
-        <div class="admin-field">
-            <label for="stock_status">Stock status</label>
-            <select id="stock_status" name="stock_status" required>
-                <?php foreach ($stockStatuses as $value => $label): ?>
-                <option value="<?php echo htmlspecialchars($value); ?>"<?php echo $currentStock === $value ? ' selected' : ''; ?>>
-                    <?php echo htmlspecialchars($label); ?>
-                </option>
-                <?php endforeach; ?>
-            </select>
+        <div class="admin-field-row">
+            <div class="admin-field">
+                <label for="stock_status">Stock status</label>
+                <select id="stock_status" name="stock_status" required>
+                    <?php foreach ($stockStatuses as $value => $label): ?>
+                    <option value="<?php echo htmlspecialchars($value); ?>"<?php echo $currentStock === $value ? ' selected' : ''; ?>>
+                        <?php echo htmlspecialchars($label); ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="admin-field">
+                <label for="stock_quantity">Quantity in stock</label>
+                <input type="number" id="stock_quantity" name="stock_quantity" min="0" step="1"
+                       value="<?php echo (int) ($item['stock_quantity'] ?? 0); ?>" required>
+                <p class="admin-field-note">Units on hand now. POS sales reduce this count.</p>
+            </div>
+            <div class="admin-field">
+                <label for="cost_price">Cost price (Rs.) <small>for POS profit</small></label>
+                <input type="number" id="cost_price" name="cost_price" min="0" step="0.01"
+                       value="<?php echo htmlspecialchars((string) ($item['cost_price'] ?? 0)); ?>">
+            </div>
+            <div class="admin-field">
+                <label for="reorder_level">Reorder level</label>
+                <input type="number" id="reorder_level" name="reorder_level" min="0" step="1"
+                       value="<?php echo (int) ($item['reorder_level'] ?? 5); ?>">
+                <p class="admin-field-note">Minimum stock before low-stock alerts (e.g. reorder when qty ≤ this).</p>
+            </div>
         </div>
 
         <div class="admin-field-row">
@@ -417,9 +474,14 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
 
     function fillModels() {
         var brandId = brandSelect.value;
-        var list = modelsForBrand(brandId);
+        var list = brandId ? modelsForBrand(brandId) : [];
         var keep = modelSelect.value;
         modelSelect.innerHTML = '<option value="">Select model</option>';
+        modelSelect.disabled = !brandId;
+        if (!brandId) {
+            modelSelect.value = '';
+            return;
+        }
         list.forEach(function (m) {
             var opt = document.createElement('option');
             opt.value = m.id;
