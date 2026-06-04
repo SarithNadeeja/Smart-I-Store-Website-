@@ -375,13 +375,25 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                     <label for="phone_variant_price">List price (Rs.)</label>
                     <input type="number" id="phone_variant_price" name="phone_variant_price" min="0" step="0.01" required
                            value="<?php echo $storageVariant && $storageVariant['price'] !== null ? htmlspecialchars((string) $storageVariant['price']) : ''; ?>"
-                           placeholder="Selling price">
+                           placeholder="e.g. 200000">
+                    <p class="admin-field-note">Normal price on the website.</p>
                 </div>
                 <div class="admin-field">
-                    <label for="phone_variant_cost">Cost price (Rs.) <small>POS profit</small></label>
+                    <label for="sale_price_phone">Sale price (Rs.) <small>optional</small></label>
+                    <input type="number" id="sale_price_phone" name="sale_price" min="0" step="0.01"
+                           value="<?php
+                           $saleVal = $item['sale_price'] ?? null;
+                           echo $saleVal !== null && $saleVal !== '' ? htmlspecialchars((string) $saleVal) : '';
+                           ?>"
+                           placeholder="e.g. 180000">
+                    <p class="admin-field-note">Lower than list price — old price shown crossed out.</p>
+                </div>
+                <div class="admin-field">
+                    <label for="phone_variant_cost">Your cost (Rs.) <small>not shown on website</small></label>
                     <input type="number" id="phone_variant_cost" name="phone_variant_cost" min="0" step="0.01" required
                            value="<?php echo htmlspecialchars((string) ($storageVariant['cost_price'] ?? 0)); ?>"
-                           placeholder="Your cost">
+                           placeholder="What you paid">
+                    <p class="admin-field-note">For POS profit only. Customers never see this.</p>
                 </div>
                 <div class="admin-field">
                     <label for="phone_variant_stock">Stock</label>
@@ -438,15 +450,19 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                        echo $saleVal !== null && $saleVal !== '' ? htmlspecialchars((string) $saleVal) : '';
                        ?>"
                        placeholder="e.g. 180000">
-                <p class="admin-field-note">Must be lower than list price. Shown on the website with the old price crossed out.</p>
+                <p class="admin-field-note">Must be lower than list price. Shown with the old price crossed out.</p>
             </div>
         </div>
 
         <div class="admin-field-row" id="item-pricing-standard">
             <div class="admin-field">
                 <label for="price">List price (Rs.)</label>
-                <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>"<?php echo $initialIsPhone ? '' : ' required'; ?>>
+                <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>" required>
+                <p class="admin-field-note">Normal price on the website.</p>
             </div>
+        </div>
+
+        <div class="admin-field-row" id="item-display-extras">
             <div class="admin-field">
                 <label for="tag">Badge label <small>(e.g. New, Hot)</small></label>
                 <input type="text" id="tag" name="tag" value="<?php
@@ -650,6 +666,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     var categorySelect = document.getElementById('category_id');
     var phoneVariantsSection = document.getElementById('phone-variants-section');
     var itemPricingStandard = document.getElementById('item-pricing-standard');
+    var itemSalePriceRow = document.getElementById('item-sale-price-row');
     var itemCostField = document.getElementById('item-cost-field');
     var itemStockStatusField = document.getElementById('item-stock-status-field');
     var itemStockQtyField = document.getElementById('item-stock-qty-field');
@@ -672,10 +689,19 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         var isPhone = !!(opt && opt.getAttribute('data-is-phone') === '1');
         if (phoneVariantsSection) phoneVariantsSection.hidden = !isPhone;
         if (itemPricingStandard) itemPricingStandard.hidden = isPhone;
+        if (itemSalePriceRow) itemSalePriceRow.hidden = isPhone;
         if (itemCostField) itemCostField.hidden = isPhone;
         if (itemStockStatusField) itemStockStatusField.hidden = isPhone;
         if (itemStockQtyField) itemStockQtyField.hidden = isPhone;
-        if (priceInput) priceInput.required = !isPhone;
+        if (priceInput) {
+            priceInput.required = !isPhone;
+            priceInput.disabled = isPhone;
+        }
+        var phoneListPrice = document.getElementById('phone_variant_price');
+        if (phoneListPrice) {
+            phoneListPrice.required = isPhone;
+            phoneListPrice.disabled = !isPhone;
+        }
     }
 
     if (categorySelect) {
