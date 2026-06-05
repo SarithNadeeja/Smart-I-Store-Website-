@@ -749,6 +749,65 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     background: var(--hero-banner-bg);
 }
 
+/* Hero stays fixed; page content scrolls over (home) */
+.hero-banner--scroll-over {
+    height: 100vh;
+    height: 100dvh;
+    overflow: visible;
+    background: transparent;
+}
+
+.hero-banner--scroll-over .hero-banner__scroll-spacer {
+    display: none;
+}
+
+.page-home main {
+    position: relative;
+}
+
+.page-home main > section:not(#hero),
+.page-home .site-footer {
+    position: relative;
+    z-index: 2;
+}
+
+/* Pull first section up — content sits over the video; scroll lifts it immediately */
+@media (min-width: 769px) {
+    .page-home main > section:not(#hero):first-of-type {
+        margin-top: calc(-100dvh + 18vh);
+    }
+}
+
+@media (max-width: 768px) {
+    .page-home main > section:not(#hero):first-of-type {
+        margin-top: calc(-100dvh + 22vh);
+    }
+}
+
+.hero-banner--scroll-over .hero-banner__bg,
+.hero-banner--scroll-over .hero-banner__stage--video,
+.hero-banner--scroll-over .hero-banner__mobile-slides {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    pointer-events: none;
+}
+
+.hero-banner--scroll-over .hero-banner__bg {
+    z-index: 0;
+}
+
+.hero-banner--scroll-over .hero-banner__stage--video {
+    z-index: 1;
+}
+
+.hero-banner--scroll-over .hero-banner__mobile-slides {
+    z-index: 0;
+}
+
 /* Banner video backdrop — flat warm gray for green-screen compositing */
 .hero-banner__bg {
     position: absolute;
@@ -1035,9 +1094,35 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     }
 }
 
-/* Mobile */
+/* Mobile — image slideshow (fixed under scrolling content) */
 @media (max-width: 768px) {
-    .hero-banner {
+    .hero-banner--has-mobile-slides .hero-banner__bg,
+    .hero-banner--has-mobile-slides .hero-banner__stage--video {
+        display: none !important;
+    }
+
+    .hero-banner--has-mobile-slides .hero-banner__mobile-slides {
+        overflow: hidden;
+        background: var(--hero-banner-bg);
+    }
+
+    .hero-banner--has-mobile-slides .hero-banner__mobile-slide {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        opacity: 0;
+        transition: opacity 0.85s ease-in-out;
+        will-change: opacity;
+    }
+
+    .hero-banner--has-mobile-slides .hero-banner__mobile-slide.is-active {
+        opacity: 1;
+    }
+
+    .hero-banner:not(.hero-banner--scroll-over) {
         min-height: 100svh;
         min-height: 100dvh;
     }

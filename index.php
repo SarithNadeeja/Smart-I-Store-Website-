@@ -2,7 +2,10 @@
 require_once __DIR__ . '/includes/config.php';
 $page_title = 'Home';
 $body_class = 'page-home';
-$extra_js = [asset_url('js/category-carousel.js')];
+$extra_js = [
+    asset_url('js/category-carousel.js'),
+    asset_url('js/hero-mobile-slides.js'),
+];
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/products-data.php';
 require_once __DIR__ . '/includes/icons.php';

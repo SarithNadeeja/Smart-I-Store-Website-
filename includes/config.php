@@ -156,6 +156,22 @@ function hero_video_exists(): bool
     return file_exists($base . 'website.webm');
 }
 
+/** Mobile hero slideshow images (assets/images/banner1.webp … banner4.webp) */
+function hero_mobile_banner_urls(): array
+{
+    $urls = [];
+    $base = __DIR__ . '/../assets/images/';
+
+    for ($i = 1; $i <= 4; $i++) {
+        $file = $base . 'banner' . $i . '.webp';
+        if (is_file($file)) {
+            $urls[] = asset_url('images/banner' . $i . '.webp');
+        }
+    }
+
+    return $urls;
+}
+
 /** Hero banner video for the site-wide preload loader */
 function site_preload_videos(): array
 {
