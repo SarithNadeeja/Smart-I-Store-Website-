@@ -804,6 +804,57 @@ function store_get_home_category_slides(int $limitPerCategory = 50): array
     return $slides;
 }
 
+/** Active customer comments, newest first. */
+function store_get_site_comments(int $limit = 30): array
+{
+    if (!db_available()) {
+        return [];
+    }
+
+    $limit = max(1, min(60, $limit));
+    $stmt = db()->prepare(
+        'SELECT id, name, comment, created_at
+         FROM customer_reviews
+         WHERE is_active = TRUE
+         ORDER BY created_at DESC, id DESC
+         LIMIT :lim'
+    );
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return $stmt->fetchAll();
+}
+
+function store_add_site_comment(string $name, string $comment): void
+{
+    $name = trim($name);
+    $comment = trim($comment);
+
+    if ($name === '') {
+        throw new RuntimeException('Please enter your name.');
+    }
+    if (mb_strlen($name) > 60) {
+        throw new RuntimeException('Name is too long (max 60 characters).');
+    }
+    if ($comment === '') {
+        throw new RuntimeException('Please write a comment.');
+    }
+    if (mb_strlen($comment) < 3) {
+        throw new RuntimeException('Comment is too short.');
+    }
+    if (mb_strlen($comment) > 500) {
+        throw new RuntimeException('Comment is too long (max 500 characters).');
+    }
+    if (!db_available()) {
+        throw new RuntimeException('Comments are temporarily unavailable. Please try again later.');
+    }
+
+    $stmt = db()->prepare(
+        'INSERT INTO customer_reviews (name, comment, rating, is_active) VALUES (:n, :c, 5, TRUE)'
+    );
+    $stmt->execute(['n' => $name, 'c' => $comment]);
+}
+
 function store_get_brand_names(): array
 {
     if (!db_available()) {

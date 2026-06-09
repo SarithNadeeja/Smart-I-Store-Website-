@@ -16,6 +16,7 @@ function admin_render_header(string $title, string $active = ''): void
         'offers' => ['Offers', 'offers.php', 'offers'],
         'preowned' => ['Pre-Owned Phones', 'preowned.php', 'preowned'],
         'stock' => ['Stock Status', 'stock.php', 'stock'],
+        'comments' => ['Customer Comments', 'comments.php', 'comments'],
         'security' => ['Security', 'security.php', 'security'],
     ];
     ?>

@@ -1,5 +1,42 @@
 ﻿<?php
 require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/database.php';
+require_once __DIR__ . '/includes/store.php';
+
+smartistore_session_start();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'site-comment') {
+    try {
+        // Honeypot: bots fill the hidden field; pretend success.
+        if (trim($_POST['website'] ?? '') !== '') {
+            $_SESSION['site_comment_flash'] = ['type' => 'success', 'message' => 'Thank you! Your comment has been posted.'];
+            header('Location: ' . page_url('index.php') . '#comments');
+            exit;
+        }
+
+        $lastPosted = (int) ($_SESSION['site_comment_last'] ?? 0);
+        if ($lastPosted > 0 && time() - $lastPosted < 60) {
+            throw new RuntimeException('Please wait a moment before posting another comment.');
+        }
+
+        store_add_site_comment($_POST['name'] ?? '', $_POST['comment'] ?? '');
+        $_SESSION['site_comment_last'] = time();
+        $_SESSION['site_comment_flash'] = ['type' => 'success', 'message' => 'Thank you! Your comment has been posted.'];
+    } catch (Throwable $e) {
+        $_SESSION['site_comment_flash'] = ['type' => 'error', 'message' => $e->getMessage()];
+        $_SESSION['site_comment_old'] = [
+            'name' => trim($_POST['name'] ?? ''),
+            'comment' => trim($_POST['comment'] ?? ''),
+        ];
+    }
+    header('Location: ' . page_url('index.php') . '#comments');
+    exit;
+}
+
+$comment_flash = $_SESSION['site_comment_flash'] ?? null;
+$comment_old = $_SESSION['site_comment_old'] ?? ['name' => '', 'comment' => ''];
+unset($_SESSION['site_comment_flash'], $_SESSION['site_comment_old']);
+
 $page_title = 'Home';
 $body_class = 'page-home';
 $extra_js = [
@@ -50,6 +87,11 @@ require_once __DIR__ . '/includes/navbar.php';
         </div>
     </section>
     <?php endif; ?>
+
+    <?php
+    $site_comments = store_get_site_comments(30);
+    require __DIR__ . '/includes/comments-marquee.php';
+    ?>
 
     <!-- Why Choose Us -->
     <section class="section section-yellow" id="why-us">
@@ -137,6 +179,40 @@ require_once __DIR__ . '/includes/navbar.php';
             </form>
             <?php require __DIR__ . '/includes/map-embed.php'; ?>
 
+        </div>
+    </section>
+
+    <!-- Leave a comment -->
+    <section class="section section-white" id="comments">
+        <div class="container">
+            <div class="section-header section-header-center reveal-up">
+                <span class="section-label">Share Your Experience</span>
+                <h2 class="section-title">Leave a Comment</h2>
+                <p class="section-desc">Tell others about your experience with <?php echo htmlspecialchars(SITE_NAME); ?>.</p>
+            </div>
+
+            <?php if ($comment_flash): ?>
+            <p class="comment-flash comment-flash--<?php echo htmlspecialchars($comment_flash['type']); ?>">
+                <?php echo htmlspecialchars($comment_flash['message']); ?>
+            </p>
+            <?php endif; ?>
+
+            <form class="comment-form glass-card reveal-up" method="post"
+                  action="<?php echo page_url('index.php'); ?>#comments">
+                <input type="hidden" name="form" value="site-comment">
+                <input type="text" name="website" value="" class="comment-form__hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+                <div class="form-group">
+                    <label for="comment_name">Name</label>
+                    <input type="text" id="comment_name" name="name" maxlength="60" placeholder="Your name"
+                           value="<?php echo htmlspecialchars($comment_old['name']); ?>" required>
+                </div>
+                <div class="form-group">
+                    <label for="comment_text">Comment</label>
+                    <textarea id="comment_text" name="comment" rows="4" maxlength="500"
+                              placeholder="Share your experience…" required><?php echo htmlspecialchars($comment_old['comment']); ?></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Post Comment</button>
+            </form>
         </div>
     </section>
 </main>

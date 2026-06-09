@@ -123,6 +123,13 @@
     white-space: pre-wrap;
 }
 
+.admin-comment-cell {
+    max-width: 420px;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.5;
+}
+
 .admin-dl {
     display: grid;
     grid-template-columns: minmax(120px, 180px) 1fr;
