@@ -247,15 +247,13 @@ function store_get_flagship_offers(int $limit = 12): array
     }
 
     $limit = max(1, min(24, $limit));
-    $sql = store_item_select_sql() . "
+    $sql = store_item_select_sql() . '
         WHERE i.is_active = TRUE
           AND i.sale_price IS NOT NULL
           AND i.sale_price > 0
           AND i.sale_price < i.price
-          AND" . store_sql_exclude_preowned() . "
         ORDER BY i.sort_order ASC, i.id DESC
-        LIMIT :lim
-    ";
+        LIMIT :lim';
     $stmt = db()->prepare($sql);
     $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
     $stmt->execute();
@@ -949,14 +947,22 @@ function store_category_is_phone(int $categoryId): bool
     if (!$row) {
         return false;
     }
+
+    // Icon is the explicit category type — only smartphones and tablets get variants.
     $icon = (string) ($row['icon'] ?? '');
     if ($icon === 'smartphone' || $icon === 'tablet') {
         return true;
     }
+    if ($icon === 'headphones' || $icon === 'watch') {
+        return false;
+    }
+
+    // Legacy categories without a known icon: match whole words only,
+    // so "Headphones" does not match "phone".
     $label = strtolower(trim(($row['description'] ?? '') . ' ' . ($row['title'] ?? '')));
-    return str_contains($label, 'phone')
-        || str_contains($label, 'smartphone')
-        || str_contains($label, 'tablet');
+    return (bool) preg_match('/\b(smart\s*phones?|phones?|tablets?)\b/', $label)
+        && !str_contains($label, 'headphone')
+        && !str_contains($label, 'earphone');
 }
 
 function store_max_sub_images(): int

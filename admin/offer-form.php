@@ -81,7 +81,7 @@ admin_render_header('Add offer', 'offers');
         <a href="<?php echo admin_url('offers.php'); ?>" class="btn btn-ghost">Back to offers</a>
     </div>
 
-    <p class="admin-field-note">Search for an existing item, set a retail price and a lower offer price. New products must be added under <a href="<?php echo admin_url('item-form.php'); ?>">Add / Manage Items</a> first.</p>
+    <p class="admin-field-note">Search for an existing catalog item or pre-owned phone, then set a retail price and a lower offer price. Add new products under <a href="<?php echo admin_url('item-form.php'); ?>">Add / Manage Items</a> or <a href="<?php echo admin_url('preowned-form.php'); ?>">Pre-Owned Phones</a> first.</p>
 
     <form method="post" class="admin-form" id="offer-form"
           action="<?php echo admin_url('offer-form.php' . ($selectedItemId ? '?item_id=' . $selectedItemId : '')); ?>">
@@ -223,7 +223,13 @@ admin_render_header('Add offer', 'offers');
             li.className = 'admin-item-picker__option';
             li.setAttribute('role', 'option');
             li.dataset.index = String(index);
-            var meta = item.category_title ? '<span class="admin-item-picker__cat">' + escapeHtml(item.category_title) + '</span>' : '';
+            var meta = '';
+            if (item.is_preowned) {
+                meta += '<span class="admin-item-picker__cat">Pre-Owned</span>';
+            }
+            if (item.category_title) {
+                meta += '<span class="admin-item-picker__cat">' + escapeHtml(item.category_title) + '</span>';
+            }
             li.innerHTML = '<span class="admin-item-picker__label">' + escapeHtml(item.label) + '</span>' + meta
                 + '<span class="admin-item-picker__price">Rs. ' + Number(item.list_price).toLocaleString() + '</span>';
             li.addEventListener('mousedown', function (e) {

@@ -129,11 +129,17 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
     }
 
     $modelCheck = $pdo->prepare(
-        'SELECT id FROM product_models WHERE id = :mid AND brand_id = :bid AND is_active = TRUE'
+        'SELECT category_id FROM product_models WHERE id = :mid AND brand_id = :bid AND is_active = TRUE'
     );
     $modelCheck->execute(['mid' => $modelId, 'bid' => $brandId]);
-    if (!$modelCheck->fetch()) {
+    $modelRow = $modelCheck->fetch();
+    if (!$modelRow) {
         throw new RuntimeException('Selected model does not belong to the chosen brand.');
+    }
+    $modelCategoryId = (int) ($modelRow['category_id'] ?? 0);
+    if ($modelCategoryId > 0 && $modelCategoryId !== $categoryId
+        && !($isPreownedSave && store_category_is_phone($modelCategoryId))) {
+        throw new RuntimeException('Selected model does not belong to the chosen category.');
     }
 
     $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
@@ -303,7 +309,11 @@ function admin_remove_item_offer(PDO $pdo, int $itemId): void
         throw new RuntimeException('Item not found.');
     }
     $pdo->prepare(
-        "UPDATE items SET sale_price = NULL, tag = CASE WHEN tag IN ('Sale', 'Offer') THEN '' ELSE tag END WHERE id = :id"
+        "UPDATE items SET sale_price = NULL, tag = CASE
+            WHEN COALESCE(is_preowned, FALSE) = TRUE AND tag IN ('Sale', 'Offer') THEN 'Pre-Owned'
+            WHEN tag IN ('Sale', 'Offer') THEN ''
+            ELSE tag END
+         WHERE id = :id"
     )->execute(['id' => $itemId]);
 }
 
@@ -318,7 +328,7 @@ function admin_item_has_active_offer(array $row): bool
 function admin_search_offer_items(PDO $pdo, string $q, int $limit = 12): array
 {
     $limit = max(1, min(20, $limit));
-    $sql = store_item_select_sql() . ' WHERE i.is_active = TRUE AND' . store_sql_exclude_preowned();
+    $sql = store_item_select_sql() . ' WHERE i.is_active = TRUE';
     $params = [];
 
     if ($q !== '') {
@@ -344,6 +354,9 @@ function admin_search_offer_items(PDO $pdo, string $q, int $limit = 12): array
         if (!empty($row['model_name'])) {
             $label .= ' ' . $row['model_name'];
         }
+        if (!empty($row['is_preowned'])) {
+            $label .= ' · Pre-Owned';
+        }
 
         $list = (float) $row['price'];
         $saleRaw = $row['sale_price'] ?? null;
@@ -360,6 +373,7 @@ function admin_search_offer_items(PDO $pdo, string $q, int $limit = 12): array
             'brand_name' => $row['brand_name'] ?? '',
             'model_name' => $row['model_name'] ?? '',
             'category_title' => $row['category_title'] ?? '',
+            'is_preowned' => !empty($row['is_preowned']),
             'list_price' => $list,
             'offer_price' => $sale,
             'tag' => $tag,

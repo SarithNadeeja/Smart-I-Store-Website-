@@ -35,7 +35,7 @@ admin_render_header('Offers', 'offers');
     </div>
 
     <?php if (!$offers): ?>
-    <p class="admin-empty">No active offers. Add items under <strong>Add / Manage Items</strong>, then use <strong>Add offer</strong> to set promotional pricing.</p>
+    <p class="admin-empty">No active offers. Add items or pre-owned phones, then use <strong>Add offer</strong> to set promotional pricing.</p>
     <?php else: ?>
     <div class="admin-table-wrap">
         <table class="admin-table">
@@ -59,6 +59,9 @@ admin_render_header('Offers', 'offers');
                 <tr>
                     <td>
                         <strong><?php echo htmlspecialchars($row['name']); ?></strong>
+                        <?php if (!empty($row['is_preowned'])): ?>
+                        <br><small class="admin-muted">Pre-Owned</small>
+                        <?php endif; ?>
                         <?php if (!empty($row['brand_name']) || !empty($row['model_name'])): ?>
                         <br><small class="admin-muted"><?php echo htmlspecialchars(trim(($row['brand_name'] ?? '') . ' ' . ($row['model_name'] ?? ''))); ?></small>
                         <?php endif; ?>

@@ -289,6 +289,23 @@ function db_migrate_upgrade(PDO $pdo): void
 
     db_migrate_pos_cloud($pdo);
     db_migrate_preowned($pdo);
+    db_migrate_model_categories($pdo);
+}
+
+/** Scope product models to a category so e.g. watch models don't show for phones. */
+function db_migrate_model_categories(PDO $pdo): void
+{
+    $exists = $pdo->query(
+        "SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = 'product_models' AND column_name = 'category_id'"
+    )->fetchColumn();
+
+    if (!$exists) {
+        $pdo->exec(
+            'ALTER TABLE product_models ADD COLUMN category_id INT NULL REFERENCES categories(id) ON DELETE SET NULL'
+        );
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_product_models_category ON product_models(category_id)');
+    }
 }
 
 function db_migrate_preowned(PDO $pdo): void

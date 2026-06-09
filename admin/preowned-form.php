@@ -30,9 +30,16 @@ if ($id > 0) {
 }
 
 $brands = $pdo->query('SELECT id, name FROM phone_brands WHERE is_active = TRUE ORDER BY sort_order ASC, name ASC')->fetchAll();
-$allModels = $pdo->query(
-    'SELECT id, brand_id, name FROM product_models WHERE is_active = TRUE ORDER BY name ASC'
-)->fetchAll();
+$allModels = array_values(array_filter(
+    $pdo->query(
+        'SELECT id, brand_id, category_id, name FROM product_models WHERE is_active = TRUE ORDER BY name ASC'
+    )->fetchAll(),
+    static function (array $m): bool {
+        $catId = (int) ($m['category_id'] ?? 0);
+        // Pre-owned market is phones only: keep phone/tablet models and legacy uncategorized ones.
+        return $catId <= 0 || store_category_is_phone($catId);
+    }
+));
 $conditions = store_preowned_conditions();
 $stockStatuses = store_stock_statuses();
 

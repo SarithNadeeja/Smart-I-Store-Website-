@@ -34,7 +34,7 @@ $categories = $pdo->query(
 )->fetchAll();
 $brands = $pdo->query('SELECT id, name FROM phone_brands WHERE is_active = TRUE ORDER BY sort_order ASC, name ASC')->fetchAll();
 $allModels = $pdo->query(
-    'SELECT id, brand_id, name FROM product_models WHERE is_active = TRUE ORDER BY name ASC'
+    'SELECT id, brand_id, category_id, name FROM product_models WHERE is_active = TRUE ORDER BY name ASC'
 )->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -100,7 +100,6 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     <?php if (!$uploadStatus['ok']): ?>
     <div class="admin-alert admin-alert--error"><?php echo htmlspecialchars($uploadStatus['message']); ?></div>
     <?php endif; ?>
-    <p class="admin-field-note">Upload problems? Use <a href="<?php echo admin_url('upload-check.php'); ?>">Upload check</a> in the admin menu.</p>
 
     <?php if ($subImages): ?>
     <div class="admin-sub-images admin-sub-images--manage">
@@ -336,7 +335,14 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     var selectedModel = <?php echo (int) ($item['model_id'] ?? 0); ?>;
 
     function modelsForBrand(brandId) {
-        return models.filter(function (m) { return String(m.brand_id) === String(brandId); });
+        var catSelect = document.getElementById('category_id');
+        var catId = catSelect ? catSelect.value : '';
+        return models.filter(function (m) {
+            if (String(m.brand_id) !== String(brandId)) return false;
+            // Models without a category (legacy) show everywhere.
+            if (!m.category_id) return true;
+            return !catId || String(m.category_id) === String(catId);
+        });
     }
 
     function fillModels() {
@@ -494,8 +500,12 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     }
 
     if (categorySelect) {
-        categorySelect.addEventListener('change', syncPhoneVariantsVisibility);
+        categorySelect.addEventListener('change', function () {
+            syncPhoneVariantsVisibility();
+            fillModels();
+        });
         syncPhoneVariantsVisibility();
+        fillModels();
     }
 
     function bindRemoveButtons(root) {

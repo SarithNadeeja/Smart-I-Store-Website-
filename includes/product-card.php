@@ -41,10 +41,11 @@ $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
     <?php if ($showPreowned && $preownedConditionLabel !== ''): ?>
     <span class="product-preowned-label">Pre-Owned</span>
     <span class="product-preowned-condition"><?php echo htmlspecialchars($preownedConditionLabel); ?></span>
-    <?php elseif ($showOfferAd && $offerDiscount > 0): ?>
+    <?php endif; ?>
+    <?php if ($showOfferAd && $offerDiscount > 0): ?>
     <span class="product-offer-label">Offer</span>
     <span class="product-offer-discount"><?php echo $offerDiscount; ?>% OFF</span>
-    <?php elseif (!empty($phone['tag']) && empty($phone['on_sale'])): ?>
+    <?php elseif (!$showPreowned && !empty($phone['tag']) && empty($phone['on_sale'])): ?>
     <span class="product-tag"><?php echo htmlspecialchars($phone['tag']); ?></span>
     <?php endif; ?>
     <?php if ($stockStatus !== 'in_stock'): ?>

@@ -20,6 +20,9 @@ if ($editId > 0) {
 $brands = $pdo->query(
     'SELECT id, name FROM phone_brands WHERE is_active = TRUE ORDER BY name ASC'
 )->fetchAll();
+$categories = $pdo->query(
+    "SELECT id, COALESCE(NULLIF(description, ''), title) AS title FROM categories WHERE is_active = TRUE ORDER BY title ASC"
+)->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
@@ -33,9 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'save') {
             $id = (int) ($_POST['id'] ?? 0);
             $brandId = (int) ($_POST['brand_id'] ?? 0);
+            $categoryId = (int) ($_POST['category_id'] ?? 0);
             $name = trim($_POST['name'] ?? '');
             $isActive = isset($_POST['is_active']);
 
+            if ($categoryId <= 0) {
+                throw new RuntimeException('Select a category.');
+            }
             if ($brandId <= 0) {
                 throw new RuntimeException('Select a brand.');
             }
@@ -45,15 +52,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($id > 0) {
                 $stmt = $pdo->prepare(
-                    'UPDATE product_models SET brand_id = :b, name = :n, is_active = :a WHERE id = :id'
+                    'UPDATE product_models SET brand_id = :b, category_id = :c, name = :n, is_active = :a WHERE id = :id'
                 );
-                $stmt->execute(['b' => $brandId, 'n' => $name, 'a' => db_bool($isActive), 'id' => $id]);
+                $stmt->execute(['b' => $brandId, 'c' => $categoryId, 'n' => $name, 'a' => db_bool($isActive), 'id' => $id]);
                 admin_flash('success', 'Model updated.');
             } else {
                 $stmt = $pdo->prepare(
-                    'INSERT INTO product_models (brand_id, name, is_active) VALUES (:b, :n, :a)'
+                    'INSERT INTO product_models (brand_id, category_id, name, is_active) VALUES (:b, :c, :n, :a)'
                 );
-                $stmt->execute(['b' => $brandId, 'n' => $name, 'a' => db_bool($isActive)]);
+                $stmt->execute(['b' => $brandId, 'c' => $categoryId, 'n' => $name, 'a' => db_bool($isActive)]);
                 admin_flash('success', 'Model created.');
             }
         }
@@ -68,9 +75,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $sql = "
-    SELECT m.*, b.name AS brand_name
+    SELECT m.*, b.name AS brand_name,
+           COALESCE(NULLIF(c.description, ''), c.title) AS category_title
     FROM product_models m
     JOIN phone_brands b ON b.id = m.brand_id
+    LEFT JOIN categories c ON c.id = m.category_id
 ";
 $params = [];
 if ($filterBrand > 0) {
@@ -93,6 +102,17 @@ admin_render_header('Model Management', 'models');
             <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
             <input type="hidden" name="action" value="save">
             <input type="hidden" name="id" value="<?php echo (int) ($editRow['id'] ?? 0); ?>">
+            <div class="admin-field">
+                <label for="category_id">Category</label>
+                <select id="category_id" name="category_id" required>
+                    <option value="">Select category</option>
+                    <?php foreach ($categories as $cat): ?>
+                    <option value="<?php echo (int) $cat['id']; ?>"<?php echo (int) ($editRow['category_id'] ?? 0) === (int) $cat['id'] ? ' selected' : ''; ?>>
+                        <?php echo htmlspecialchars($cat['title']); ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <div class="admin-field">
                 <label for="brand_id">Brand</label>
                 <select id="brand_id" name="brand_id" required>
@@ -142,6 +162,7 @@ admin_render_header('Model Management', 'models');
             <table class="admin-table">
                 <thead>
                     <tr>
+                        <th>Category</th>
                         <th>Brand</th>
                         <th>Model</th>
                         <th>Status</th>
@@ -151,6 +172,7 @@ admin_render_header('Model Management', 'models');
                 <tbody>
                     <?php foreach ($models as $model): ?>
                     <tr>
+                        <td><?php echo htmlspecialchars($model['category_title'] ?? '') ?: '<em>Any</em>'; ?></td>
                         <td><?php echo htmlspecialchars($model['brand_name']); ?></td>
                         <td><?php echo htmlspecialchars($model['name']); ?></td>
                         <td><?php echo !empty($model['is_active']) ? 'Active' : 'Hidden'; ?></td>
