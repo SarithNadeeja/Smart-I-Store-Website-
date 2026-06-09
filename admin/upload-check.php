@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 /** Bump when upload handler changes — shown in admin errors for deploy verification. */
 if (!defined('UPLOADS_HANDLER_VERSION')) {
-    define('UPLOADS_HANDLER_VERSION', '20250609b');
+    define('UPLOADS_HANDLER_VERSION', '20250609c');
 }
 
 require_once __DIR__ . '/includes/init.php';
@@ -58,8 +58,14 @@ admin_render_header('Upload check', 'items');
         — if uploads fail elsewhere but this page shows an older version, deploy the latest code and restart PHP/Apache.</p>
 
     <dl class="admin-dl">
-        <dt>Folder</dt>
+        <dt>Folder in use</dt>
         <dd><code><?php echo htmlspecialchars($status['dir']); ?></code></dd>
+        <dt>Configured path</dt>
+        <dd><code><?php echo htmlspecialchars((string) ($status['using_path'] ?? uploads_base_dir())); ?></code></dd>
+        <?php if (!empty($status['project_link'])): ?>
+        <dt>assets/uploads link</dt>
+        <dd><code><?php echo htmlspecialchars((string) $status['link_target']); ?></code></dd>
+        <?php endif; ?>
         <dt>Writable</dt>
         <dd><?php echo $status['writable'] ? 'Yes' : 'No'; ?></dd>
         <dt>upload_max_filesize</dt>

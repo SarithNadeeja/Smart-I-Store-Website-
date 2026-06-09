@@ -14,8 +14,17 @@
  *   define('DB_USER', 'smartistore_user');
  *   define('DB_PASS', 'smartistorepwd');
  *
- * Optional — store uploads outside the Git repo (symlink target or absolute path):
+ * Optional — store uploads outside the Git repo (must exist and be writable):
  *   define('UPLOADS_BASE_PATH', '/var/smaristore/uploads');
+ *
+ * If assets/uploads is a symlink, the target folder must exist, e.g.:
+ *   mkdir -p /var/smaristore/uploads/items
+ *   ln -sfn /var/smaristore/uploads /path/to/SmartIStore/assets/uploads
+ *
+ * If the symlink is broken, either fix the target or remove the link and use a normal folder:
+ *   rm assets/uploads
+ *   mkdir -p assets/uploads/items
+ *   chmod -R 775 assets/uploads
  */
 
 // define('BASE_PATH', '');

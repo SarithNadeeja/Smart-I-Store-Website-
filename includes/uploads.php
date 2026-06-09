@@ -1,7 +1,7 @@
 <?php
 
 /** Bump when upload handler changes — visible in admin errors. */
-define('UPLOADS_HANDLER_VERSION', '20250609b');
+define('UPLOADS_HANDLER_VERSION', '20250609c');
 
 /** Per-file limit enforced in the app (keep below server upload_max_filesize) */
 define('UPLOAD_MAX_FILE_BYTES', 15 * 1024 * 1024);
@@ -57,13 +57,18 @@ function uploads_assert_post_accepted(): void
     }
 }
 
+function uploads_project_uploads_path(): string
+{
+    return uploads_normalize_path(dirname(__DIR__) . '/assets/uploads');
+}
+
 function uploads_base_dir(): string
 {
     if (defined('UPLOADS_BASE_PATH') && UPLOADS_BASE_PATH !== '') {
         return rtrim(str_replace('\\', '/', (string) UPLOADS_BASE_PATH), '/');
     }
 
-    return str_replace('\\', '/', dirname(__DIR__) . '/assets/uploads');
+    return uploads_project_uploads_path();
 }
 
 function uploads_normalize_path(string $path): string
@@ -71,24 +76,92 @@ function uploads_normalize_path(string $path): string
     return str_replace('\\', '/', $path);
 }
 
+function uploads_link_target(string $path): ?string
+{
+    if (!is_link($path)) {
+        return null;
+    }
+
+    $target = readlink($path);
+    if ($target === false || $target === '') {
+        return null;
+    }
+
+    if ($target[0] !== '/' && $target[1] !== ':') {
+        $target = uploads_normalize_path(dirname($path) . '/' . $target);
+    }
+
+    return uploads_normalize_path($target);
+}
+
+/**
+ * Try to fix a broken uploads symlink (missing target, or replace with a real folder).
+ */
+function uploads_repair_broken_link(string $linkPath): bool
+{
+    if (!is_link($linkPath)) {
+        return is_dir($linkPath);
+    }
+
+    $target = uploads_link_target($linkPath);
+    if ($target !== null && !is_dir($target)) {
+        @mkdir($target, 0775, true);
+        @mkdir($target . '/items', 0775, true);
+        if (is_dir($target)) {
+            uploads_log_error('Created missing upload symlink target: ' . $target);
+        }
+    }
+
+    if (is_dir($linkPath)) {
+        return true;
+    }
+
+    // Last resort: replace broken assets/uploads symlink with a real folder in the project.
+    if ($linkPath === uploads_project_uploads_path()) {
+        $parent = dirname($linkPath);
+        if (is_writable($parent)) {
+            @unlink($linkPath);
+            if (@mkdir($linkPath, 0775, true) || is_dir($linkPath)) {
+                uploads_log_error('Replaced broken assets/uploads symlink with a real folder.');
+                return true;
+            }
+        }
+    }
+
+    return is_dir($linkPath);
+}
+
 function uploads_ensure_base_dir(): void
 {
     $base = uploads_base_dir();
+
     if (is_dir($base)) {
         return;
     }
 
-    if (is_link($base) && !is_dir($base)) {
+    if (is_link($base)) {
+        if (uploads_repair_broken_link($base)) {
+            return;
+        }
+
+        $target = uploads_link_target($base);
+        $detail = $target !== null
+            ? 'Symlink points to missing folder: ' . $target . '. '
+            : '';
+
         throw new RuntimeException(
-            'Upload storage link is broken (assets/uploads). '
-            . 'Fix the symlink or set UPLOADS_BASE_PATH in includes/config.local.php.'
+            '[Upload ' . UPLOADS_HANDLER_VERSION . '] Upload storage link is broken (assets/uploads). '
+            . $detail
+            . 'On the server: rm assets/uploads && mkdir -p assets/uploads/items && chmod -R 775 assets/uploads '
+            . '— or set UPLOADS_BASE_PATH in includes/config.local.php to a writable folder.'
         );
     }
 
-    if (!@mkdir($base, 0755, true) && !is_dir($base)) {
+    if (!@mkdir($base, 0775, true) && !is_dir($base)) {
         throw new RuntimeException(
-            'Upload folder could not be created (assets/uploads). '
-            . 'Create it manually and make it writable by the web server.'
+            '[Upload ' . UPLOADS_HANDLER_VERSION . '] Upload folder could not be created ('
+            . $base
+            . '). Create it manually and make it writable by the web server.'
         );
     }
 }
@@ -231,8 +304,24 @@ function uploads_fail(string $summary, string $detail = ''): void
 function uploads_log_error(string $message): void
 {
     $line = date('Y-m-d H:i:s') . ' ' . $message . PHP_EOL;
-    $logFile = uploads_base_dir() . '/upload-error.log';
-    @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+    $paths = [
+        uploads_project_uploads_path() . '/upload-error.log',
+        uploads_normalize_path(dirname(__DIR__) . '/storage/upload-error.log'),
+    ];
+
+    if (defined('UPLOADS_BASE_PATH') && UPLOADS_BASE_PATH !== '') {
+        array_unshift($paths, rtrim(str_replace('\\', '/', (string) UPLOADS_BASE_PATH), '/') . '/upload-error.log');
+    }
+
+    foreach ($paths as $logFile) {
+        $dir = dirname($logFile);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        if (@file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX) !== false) {
+            return;
+        }
+    }
 }
 
 function uploads_store_failure_detail(string $tmp, string $dest, array $steps = []): string
@@ -349,23 +438,38 @@ function uploads_assert_total_size(array $filesMain, array $subFiles): void
 
 function uploads_status(): array
 {
+    $projectLink = uploads_project_uploads_path();
+    $linkTarget = uploads_link_target($projectLink);
+    $usingPath = uploads_base_dir();
+
     try {
         $dir = uploads_dir();
         $writable = is_writable($dir);
     } catch (Throwable $e) {
         return [
             'ok' => false,
-            'dir' => uploads_base_dir() . '/items',
+            'dir' => $usingPath . '/items',
             'writable' => false,
             'message' => $e->getMessage(),
+            'project_link' => is_link($projectLink) ? $projectLink : null,
+            'link_target' => $linkTarget,
+            'using_path' => $usingPath,
         ];
+    }
+
+    $message = $writable ? 'Upload folder is writable.' : 'Upload folder is not writable.';
+    if ($linkTarget !== null && !is_dir($linkTarget)) {
+        $message = 'Broken symlink: assets/uploads -> ' . $linkTarget;
     }
 
     return [
         'ok' => $writable,
         'dir' => $dir,
         'writable' => $writable,
-        'message' => $writable ? 'Upload folder is writable.' : 'Upload folder is not writable.',
+        'message' => $message,
+        'project_link' => is_link($projectLink) ? $projectLink : null,
+        'link_target' => $linkTarget,
+        'using_path' => $usingPath,
     ];
 }
 
