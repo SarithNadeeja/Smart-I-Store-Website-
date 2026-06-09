@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     't' => $description,
                     'd' => $description,
                     'i' => $icon,
-                    'a' => $isActive,
+                    'a' => db_bool($isActive),
                     'id' => $id,
                 ]);
                 admin_flash('success', 'Category updated.');
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     't' => $description,
                     'd' => $description,
                     'i' => $icon,
-                    'a' => $isActive,
+                    'a' => db_bool($isActive),
                 ]);
                 admin_flash('success', 'Category created.');
             }

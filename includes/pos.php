@@ -447,7 +447,7 @@ function pos_save_customer(
         'email' => trim($email),
         'address' => trim($address),
         'notes' => trim($notes),
-        'active' => $isActive,
+        'active' => db_bool($isActive),
     ];
 
     if ($id > 0) {
@@ -520,7 +520,7 @@ function pos_save_supplier(
         'email' => trim($email),
         'address' => trim($address),
         'notes' => trim($notes),
-        'active' => $isActive,
+        'active' => db_bool($isActive),
     ];
 
     if ($id > 0) {

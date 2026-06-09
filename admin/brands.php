@@ -37,13 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare(
                     'UPDATE phone_brands SET name = :n, sort_order = :s, is_active = :a WHERE id = :id'
                 );
-                $stmt->execute(['n' => $name, 's' => $sortOrder, 'a' => $isActive, 'id' => $id]);
+                $stmt->execute(['n' => $name, 's' => $sortOrder, 'a' => db_bool($isActive), 'id' => $id]);
                 admin_flash('success', 'Brand updated.');
             } else {
                 $stmt = $pdo->prepare(
                     'INSERT INTO phone_brands (name, sort_order, is_active) VALUES (:n, :s, :a)'
                 );
-                $stmt->execute(['n' => $name, 's' => $sortOrder, 'a' => $isActive]);
+                $stmt->execute(['n' => $name, 's' => $sortOrder, 'a' => db_bool($isActive)]);
                 admin_flash('success', 'Brand created.');
             }
         }

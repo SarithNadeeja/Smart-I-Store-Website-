@@ -47,13 +47,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare(
                     'UPDATE product_models SET brand_id = :b, name = :n, is_active = :a WHERE id = :id'
                 );
-                $stmt->execute(['b' => $brandId, 'n' => $name, 'a' => $isActive, 'id' => $id]);
+                $stmt->execute(['b' => $brandId, 'n' => $name, 'a' => db_bool($isActive), 'id' => $id]);
                 admin_flash('success', 'Model updated.');
             } else {
                 $stmt = $pdo->prepare(
                     'INSERT INTO product_models (brand_id, name, is_active) VALUES (:b, :n, :a)'
                 );
-                $stmt->execute(['b' => $brandId, 'n' => $name, 'a' => $isActive]);
+                $stmt->execute(['b' => $brandId, 'n' => $name, 'a' => db_bool($isActive)]);
                 admin_flash('success', 'Model created.');
             }
         }

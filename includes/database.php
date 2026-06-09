@@ -30,6 +30,15 @@ function db(): PDO
     return $pdo;
 }
 
+/**
+ * PostgreSQL-safe boolean for PDO execute() arrays.
+ * PHP false alone is often bound as "" which causes SQLSTATE[22P02].
+ */
+function db_bool(mixed $value): string
+{
+    return filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'true' : 'false';
+}
+
 function db_migrate(PDO $pdo): void
 {
     $pdo->exec("
