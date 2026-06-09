@@ -63,20 +63,16 @@ function uploads_base_dir(): string
     return str_replace('\\', '/', dirname(__DIR__) . '/assets/uploads');
 }
 
-function uploads_dir(): string
+function uploads_normalize_path(string $path): string
+{
+    return str_replace('\\', '/', $path);
+}
+
+function uploads_ensure_base_dir(): void
 {
     $base = uploads_base_dir();
-    $dir = $base . '/items';
-
-    if (is_dir($dir)) {
-        if (!is_writable($dir)) {
-            throw new RuntimeException(
-                'Upload folder is not writable (assets/uploads/items). '
-                . 'Allow the web server user to write to this folder.'
-            );
-        }
-
-        return $dir;
+    if (is_dir($base)) {
+        return;
     }
 
     if (is_link($base) && !is_dir($base)) {
@@ -86,11 +82,39 @@ function uploads_dir(): string
         );
     }
 
+    if (!@mkdir($base, 0755, true) && !is_dir($base)) {
+        throw new RuntimeException(
+            'Upload folder could not be created (assets/uploads). '
+            . 'Create it manually and make it writable by the web server.'
+        );
+    }
+}
+
+function uploads_dir(): string
+{
+    uploads_ensure_base_dir();
+    $dir = uploads_base_dir() . '/items';
+
+    if (is_dir($dir)) {
+        if (!is_writable($dir)) {
+            throw new RuntimeException(
+                'Upload folder is not writable (assets/uploads/items). '
+                . 'Allow the web server user to write to this folder.'
+            );
+        }
+
+        return uploads_normalize_path($dir);
+    }
+
     if (!@mkdir($dir, 0755, true) && !is_dir($dir)) {
         throw new RuntimeException(
             'Upload folder could not be created (assets/uploads/items). '
             . 'Create it manually and make it writable by the web server.'
         );
+    }
+
+    if (DIRECTORY_SEPARATOR === '\\') {
+        @chmod($dir, 0777);
     }
 
     if (!is_writable($dir)) {
@@ -100,20 +124,231 @@ function uploads_dir(): string
         );
     }
 
-    return $dir;
+    return uploads_normalize_path($dir);
 }
 
-function uploads_move_failed_message(string $dest): string
+function uploads_allowed_image_types(): array
+{
+    return [
+        'image/jpeg' => 'jpg',
+        'image/pjpeg' => 'jpg',
+        'image/jpg' => 'jpg',
+        'image/png' => 'png',
+        'image/x-png' => 'png',
+        'image/webp' => 'webp',
+        'image/gif' => 'gif',
+    ];
+}
+
+function uploads_resolve_image_extension(array $file): string
+{
+    $allowed = uploads_allowed_image_types();
+    $tmp = (string) ($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_file($tmp)) {
+        throw new RuntimeException('Upload temporary file is missing. Try again or use a smaller image.');
+    }
+
+    $mime = '';
+    if (class_exists('finfo')) {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = (string) ($finfo->file($tmp) ?: '');
+    }
+    if ($mime !== '' && isset($allowed[$mime])) {
+        return $allowed[$mime];
+    }
+
+    $imageInfo = @getimagesize($tmp);
+    if (is_array($imageInfo) && !empty($imageInfo['mime']) && isset($allowed[$imageInfo['mime']])) {
+        return $allowed[$imageInfo['mime']];
+    }
+
+    $ext = strtolower(pathinfo((string) ($file['name'] ?? ''), PATHINFO_EXTENSION));
+    $byExt = [
+        'jpg' => 'jpg',
+        'jpeg' => 'jpg',
+        'png' => 'png',
+        'webp' => 'webp',
+        'gif' => 'gif',
+    ];
+    if ($imageInfo !== false && isset($byExt[$ext])) {
+        return $byExt[$ext];
+    }
+
+    $label = $mime !== '' ? $mime : 'unknown type';
+    throw new RuntimeException('Only JPG, PNG, WebP, and GIF images are allowed (received ' . $label . ').');
+}
+
+function uploads_temp_is_trusted(string $tmp): bool
+{
+    if ($tmp === '' || !is_file($tmp)) {
+        return false;
+    }
+    if (is_uploaded_file($tmp)) {
+        return true;
+    }
+
+    $tmpReal = uploads_normalize_path((string) (realpath($tmp) ?: $tmp));
+    $dirs = [sys_get_temp_dir()];
+    $uploadTmp = ini_get('upload_tmp_dir');
+    if (is_string($uploadTmp) && $uploadTmp !== '') {
+        $dirs[] = $uploadTmp;
+    }
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $dirs[] = 'C:/xampp/tmp';
+    }
+
+    foreach ($dirs as $dir) {
+        if ($dir === '') {
+            continue;
+        }
+        $dirReal = uploads_normalize_path((string) (realpath($dir) ?: $dir));
+        $dirReal = rtrim($dirReal, '/');
+        if ($tmpReal === $dirReal || str_starts_with($tmpReal, $dirReal . '/')) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function uploads_store_failure_detail(string $tmp, string $dest): string
+{
+    $parts = [];
+    $parent = dirname($dest);
+
+    if (!is_dir($parent)) {
+        $parts[] = 'folder missing: assets/uploads/items';
+    } elseif (!is_writable($parent)) {
+        $parts[] = 'folder not writable: assets/uploads/items';
+    }
+
+    if ($tmp === '' || !is_file($tmp)) {
+        $parts[] = 'temp file missing';
+    } elseif (filesize($tmp) <= 0) {
+        $parts[] = 'temp file empty';
+    }
+
+    $free = @disk_free_space($parent);
+    if ($free !== false && $free < 1024 * 1024) {
+        $parts[] = 'disk nearly full';
+    }
+
+    $last = error_get_last();
+    if (is_array($last) && !empty($last['message'])) {
+        $parts[] = trim((string) $last['message']);
+    }
+
+    return $parts !== [] ? ' ' . implode('; ', $parts) : '';
+}
+
+function uploads_store_temp_file(string $tmp, string $dest): void
 {
     $parent = dirname($dest);
     if (!is_dir($parent)) {
-        return 'Upload folder is missing (assets/uploads/items). Create it and try again.';
-    }
-    if (!is_writable($parent)) {
-        return 'Upload folder is not writable. Fix permissions on assets/uploads/items.';
+        @mkdir($parent, 0755, true);
     }
 
-    return 'The server could not move the uploaded file. Check folder permissions and PHP upload_tmp_dir.';
+    if (@move_uploaded_file($tmp, $dest) && is_file($dest) && filesize($dest) > 0) {
+        return;
+    }
+
+    if (!uploads_temp_is_trusted($tmp)) {
+        throw new RuntimeException(
+            'Upload temporary file is missing. Try again, use a smaller image, or check PHP upload_tmp_dir.'
+        );
+    }
+
+    if (@copy($tmp, $dest) && is_file($dest) && filesize($dest) > 0) {
+        @unlink($tmp);
+        return;
+    }
+
+    if (@rename($tmp, $dest) && is_file($dest) && filesize($dest) > 0) {
+        return;
+    }
+
+    $bytes = @file_get_contents($tmp);
+    if ($bytes !== false && $bytes !== '' && @file_put_contents($dest, $bytes) !== false) {
+        @unlink($tmp);
+        return;
+    }
+
+    $in = @fopen($tmp, 'rb');
+    if ($in === false) {
+        throw new RuntimeException(
+            'Could not read the uploaded file from temp storage. Check PHP upload_tmp_dir ('
+            . (ini_get('upload_tmp_dir') ?: 'system default') . ').'
+        );
+    }
+
+    $out = @fopen($dest, 'wb');
+    if ($out === false) {
+        fclose($in);
+        throw new RuntimeException(
+            'Could not write to assets/uploads/items. Fix folder permissions for the web server user.'
+            . uploads_store_failure_detail($tmp, $dest)
+        );
+    }
+
+    $copied = stream_copy_to_stream($in, $out);
+    fclose($in);
+    fclose($out);
+
+    if ($copied === false || !is_file($dest) || filesize($dest) <= 0) {
+        @unlink($dest);
+        throw new RuntimeException(
+            'Could not save uploaded image.'
+            . uploads_store_failure_detail($tmp, $dest)
+        );
+    }
+
+    @unlink($tmp);
+}
+
+/**
+ * Validate combined upload payload size before writing any files.
+ *
+ * @param array<string, mixed> $filesMain $_FILES['main_image'] or similar
+ * @param list<array<string, mixed>> $subFiles from uploads_collect_files()
+ */
+function uploads_assert_total_size(array $filesMain, array $subFiles): void
+{
+    $uploadBytes = 0;
+    if (!empty($filesMain['name']) && (int) ($filesMain['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+        $uploadBytes += (int) ($filesMain['size'] ?? 0);
+    }
+    foreach ($subFiles as $file) {
+        $uploadBytes += (int) ($file['size'] ?? 0);
+    }
+    if ($uploadBytes > UPLOAD_MAX_TOTAL_BYTES) {
+        throw new RuntimeException(
+            'Total upload size is too large (max '
+            . (int) (UPLOAD_MAX_TOTAL_BYTES / 1024 / 1024)
+            . ' MB per save). Upload fewer images or use smaller files.'
+        );
+    }
+}
+
+function uploads_status(): array
+{
+    try {
+        $dir = uploads_dir();
+        $writable = is_writable($dir);
+    } catch (Throwable $e) {
+        return [
+            'ok' => false,
+            'dir' => uploads_base_dir() . '/items',
+            'writable' => false,
+            'message' => $e->getMessage(),
+        ];
+    }
+
+    return [
+        'ok' => $writable,
+        'dir' => $dir,
+        'writable' => $writable,
+        'message' => $writable ? 'Upload folder is writable.' : 'Upload folder is not writable.',
+    ];
 }
 
 function uploads_save_image(array $file): ?string
@@ -144,38 +379,17 @@ function uploads_save_image(array $file): ?string
         );
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($file['tmp_name']);
-    $allowed = [
-        'image/jpeg' => 'jpg',
-        'image/png' => 'png',
-        'image/webp' => 'webp',
-        'image/gif' => 'gif',
-    ];
-
-    if (!isset($allowed[$mime])) {
-        throw new RuntimeException('Only JPG, PNG, WebP, and GIF images are allowed.');
+    if (trim((string) ($file['name'] ?? '')) === '') {
+        return null;
     }
 
-    $name = bin2hex(random_bytes(8)) . '.' . $allowed[$mime];
+    $extension = uploads_resolve_image_extension($file);
+    $name = bin2hex(random_bytes(8)) . '.' . $extension;
     $dir = uploads_dir();
-    $dest = $dir . DIRECTORY_SEPARATOR . $name;
+    $dest = $dir . '/' . $name;
+    $tmp = (string) ($file['tmp_name'] ?? '');
 
-    $tmp = $file['tmp_name'] ?? '';
-    if ($tmp === '' || !is_uploaded_file($tmp)) {
-        throw new RuntimeException(
-            'Upload temporary file is missing. Try again, use a smaller image, or check PHP upload_tmp_dir.'
-        );
-    }
-
-    if (!move_uploaded_file($tmp, $dest)) {
-        // Some Windows/IIS and shared hosts allow copy when move_uploaded_file fails.
-        if (@copy($tmp, $dest)) {
-            @unlink($tmp);
-        } else {
-            throw new RuntimeException('Could not save uploaded image. ' . uploads_move_failed_message($dest));
-        }
-    }
+    uploads_store_temp_file($tmp, $dest);
 
     return 'items/' . $name;
 }

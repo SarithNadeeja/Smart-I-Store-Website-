@@ -136,6 +136,9 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
         throw new RuntimeException('Selected model does not belong to the chosen brand.');
     }
 
+    $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
+    uploads_assert_total_size($_FILES['main_image'] ?? [], $subFiles);
+
     $mainImage = $existingItem['main_image'] ?? '';
     if (!empty($_FILES['main_image']['name'])) {
         $newMain = uploads_save_image($_FILES['main_image']);
@@ -206,22 +209,6 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
             'bat' => $batteryHealth,
         ]);
         $id = (int) $stmt->fetchColumn();
-    }
-
-    $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
-    $uploadBytes = 0;
-    if (!empty($_FILES['main_image']['name']) && (int) ($_FILES['main_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-        $uploadBytes += (int) ($_FILES['main_image']['size'] ?? 0);
-    }
-    foreach ($subFiles as $file) {
-        $uploadBytes += (int) ($file['size'] ?? 0);
-    }
-    if ($uploadBytes > UPLOAD_MAX_TOTAL_BYTES) {
-        throw new RuntimeException(
-            'Total upload size is too large (max '
-            . (int) (UPLOAD_MAX_TOTAL_BYTES / 1024 / 1024)
-            . ' MB per save). Upload fewer images or use smaller files.'
-        );
     }
 
     if ($subFiles) {

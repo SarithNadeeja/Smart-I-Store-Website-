@@ -90,12 +90,16 @@ $storageVariant = $storageVariants[0] ?? null;
 $systemSpecs = $id > 0 ? store_get_item_system_specs($id) : [];
 $initialCategoryId = (int) ($item['category_id'] ?? 0);
 $initialIsPhone = $initialCategoryId > 0 && store_category_is_phone($initialCategoryId);
+$uploadStatus = uploads_status();
 
 admin_render_header($item ? 'Edit item' : 'Add item', 'items');
 ?>
 <section class="admin-panel admin-panel--wide">
     <h2><?php echo $item ? 'Edit item' : 'Add item'; ?></h2>
     <p class="admin-field-note">Set the retail price here. Discounts and promotional pricing are managed under <a href="<?php echo admin_url('offers.php'); ?>">Offers</a>.</p>
+    <?php if (!$uploadStatus['ok']): ?>
+    <div class="admin-alert admin-alert--error"><?php echo htmlspecialchars($uploadStatus['message']); ?></div>
+    <?php endif; ?>
 
     <?php if ($subImages): ?>
     <div class="admin-sub-images admin-sub-images--manage">
