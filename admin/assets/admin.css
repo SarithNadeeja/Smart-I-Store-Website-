@@ -123,6 +123,34 @@
     white-space: pre-wrap;
 }
 
+.admin-dl {
+    display: grid;
+    grid-template-columns: minmax(120px, 180px) 1fr;
+    gap: 8px 16px;
+    margin: 0 0 20px;
+}
+
+.admin-dl dt {
+    margin: 0;
+    font-weight: 600;
+    color: var(--admin-text-muted, #888);
+}
+
+.admin-dl dd {
+    margin: 0;
+}
+
+.admin-code {
+    margin: 0;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--admin-code-bg);
+    font-size: 0.8rem;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .admin-alert--success {
     background: var(--admin-success-bg);
     color: var(--admin-success-text);

@@ -1,5 +1,8 @@
 <?php
 
+/** Bump when upload handler changes — visible in admin errors. */
+define('UPLOADS_HANDLER_VERSION', '20250609b');
+
 /** Per-file limit enforced in the app (keep below server upload_max_filesize) */
 define('UPLOAD_MAX_FILE_BYTES', 15 * 1024 * 1024);
 
@@ -97,13 +100,17 @@ function uploads_dir(): string
 
     if (is_dir($dir)) {
         if (!is_writable($dir)) {
-            throw new RuntimeException(
-                'Upload folder is not writable (assets/uploads/items). '
-                . 'Allow the web server user to write to this folder.'
+            @chmod($dir, 0775);
+        }
+        if (!is_writable($dir)) {
+            uploads_fail(
+                'Upload folder is not writable.',
+                'Fix permissions on assets/uploads/items for the web server user (e.g. chmod 775).'
             );
         }
 
-        return uploads_normalize_path($dir);
+        $real = realpath($dir);
+        return uploads_normalize_path($real !== false ? $real : $dir);
     }
 
     if (!@mkdir($dir, 0755, true) && !is_dir($dir)) {
@@ -211,6 +218,16 @@ function uploads_temp_is_trusted(string $tmp): bool
     return false;
 }
 
+function uploads_fail(string $summary, string $detail = ''): void
+{
+    $msg = '[Upload ' . UPLOADS_HANDLER_VERSION . '] ' . $summary;
+    if ($detail !== '') {
+        $msg .= ' — ' . $detail;
+    }
+    uploads_log_error($msg);
+    throw new RuntimeException($msg);
+}
+
 function uploads_log_error(string $message): void
 {
     $line = date('Y-m-d H:i:s') . ' ' . $message . PHP_EOL;
@@ -261,40 +278,26 @@ function uploads_store_failure_detail(string $tmp, string $dest, array $steps = 
 
 function uploads_store_temp_file(string $tmp, string $dest): void
 {
-    $steps = [];
     $parent = dirname($dest);
-
-    if (!is_dir($parent)) {
-        if (!@mkdir($parent, 0755, true) && !is_dir($parent)) {
-            $detail = uploads_store_failure_detail($tmp, $dest, ['step=mkdir_failed']);
-            uploads_log_error($detail);
-            throw new RuntimeException('Could not save uploaded image. ' . $detail);
-        }
+    if (!is_dir($parent) && !@mkdir($parent, 0775, true) && !is_dir($parent)) {
+        uploads_fail('Upload folder missing.', 'Create assets/uploads/items on the server.');
     }
 
-    if (is_file($dest) && filesize($dest) <= 0) {
+    if (is_file($dest)) {
         @unlink($dest);
     }
 
-    clearstatcache(true, $tmp);
-    clearstatcache(true, $dest);
-
-    $moved = @move_uploaded_file($tmp, $dest);
-    clearstatcache(true, $dest);
-    if ($moved && is_file($dest)) {
-        return;
-    }
-    $steps[] = 'move_uploaded_file=' . ($moved ? 'true_but_no_dest' : 'false');
-
-    if (!is_file($tmp) && is_file($dest)) {
-        return;
+    if ($tmp !== '' && is_uploaded_file($tmp) && @move_uploaded_file($tmp, $dest)) {
+        clearstatcache(true, $dest);
+        if (is_file($dest)) {
+            return;
+        }
     }
 
-    if (!uploads_temp_is_trusted($tmp)) {
-        $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, ['step=temp_not_trusted']));
-        uploads_log_error($detail);
-        throw new RuntimeException(
-            'Upload temporary file is missing. Try again, use a smaller image, or check PHP upload_tmp_dir. ' . $detail
+    if ($tmp === '' || !is_file($tmp)) {
+        uploads_fail(
+            'Temporary upload file missing.',
+            'Try a smaller JPG/PNG, or increase post_max_size / upload_max_filesize in PHP.'
         );
     }
 
@@ -305,62 +308,19 @@ function uploads_store_temp_file(string $tmp, string $dest): void
             return;
         }
     }
-    $steps[] = 'copy=false_or_empty';
 
-    if (@rename($tmp, $dest)) {
-        clearstatcache(true, $dest);
-        if (is_file($dest) && filesize($dest) > 0) {
-            return;
-        }
-    }
-    $steps[] = 'rename=false_or_empty';
-
-    $bytes = @file_get_contents($tmp);
-    if ($bytes !== false && $bytes !== '' && @file_put_contents($dest, $bytes) !== false) {
+    if (@file_put_contents($dest, (string) file_get_contents($tmp)) !== false) {
         clearstatcache(true, $dest);
         if (is_file($dest) && filesize($dest) > 0) {
             @unlink($tmp);
             return;
         }
     }
-    $steps[] = 'file_put_contents=false_or_empty';
 
-    $in = @fopen($tmp, 'rb');
-    if ($in === false) {
-        $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, ['step=fopen_tmp_failed']));
-        uploads_log_error($detail);
-        throw new RuntimeException(
-            'Could not read the uploaded file from temp storage. Check PHP upload_tmp_dir. ' . $detail
-        );
-    }
-
-    $out = @fopen($dest, 'wb');
-    if ($out === false) {
-        fclose($in);
-        $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, ['step=fopen_dest_failed']));
-        uploads_log_error($detail);
-        throw new RuntimeException(
-            'Could not write to assets/uploads/items. Fix folder permissions for the web server user. ' . $detail
-        );
-    }
-
-    $copied = stream_copy_to_stream($in, $out);
-    fclose($in);
-    fclose($out);
-    clearstatcache(true, $dest);
-
-    if ($copied !== false && $copied > 0 && is_file($dest)) {
-        @unlink($tmp);
-        return;
-    }
-
-    @unlink($dest);
-    $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, [
-        'step=stream_copy_failed',
-        'copied=' . ($copied === false ? 'false' : (string) $copied),
-    ]));
-    uploads_log_error($detail);
-    throw new RuntimeException('Could not save uploaded image. ' . $detail);
+    uploads_fail(
+        'Could not save uploaded image.',
+        uploads_store_failure_detail($tmp, $dest, ['move_and_copy_failed'])
+    );
 }
 
 /**
@@ -454,21 +414,18 @@ function uploads_save_image(array $file): ?string
     $extension = uploads_resolve_image_extension($file);
     $name = bin2hex(random_bytes(8)) . '.' . $extension;
     $dir = uploads_dir();
-    $dest = $dir . '/' . $name;
+    $dest = $dir . DIRECTORY_SEPARATOR . $name;
     $tmp = (string) ($file['tmp_name'] ?? '');
 
     uploads_log_error(
-        'save attempt name=' . ($file['name'] ?? '')
+        'save attempt v=' . UPLOADS_HANDLER_VERSION
+        . ' name=' . ($file['name'] ?? '')
         . ' ext=' . $extension
         . ' tmp=' . $tmp
         . ' size=' . ($file['size'] ?? 0)
     );
 
-    try {
-        uploads_store_temp_file($tmp, $dest);
-    } catch (RuntimeException $e) {
-        throw $e;
-    }
+    uploads_store_temp_file($tmp, $dest);
 
     return 'items/' . $name;
 }

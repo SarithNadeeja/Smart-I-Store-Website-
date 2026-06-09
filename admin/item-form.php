@@ -100,7 +100,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     <?php if (!$uploadStatus['ok']): ?>
     <div class="admin-alert admin-alert--error"><?php echo htmlspecialchars($uploadStatus['message']); ?></div>
     <?php endif; ?>
-    <p class="admin-field-note">Upload problems? Open <a href="<?php echo htmlspecialchars(base_url('tools/upload-probe.php')); ?>" target="_blank" rel="noopener">upload diagnostics</a> (while logged in). Failed saves are also logged to <code>assets/uploads/upload-error.log</code>.</p>
+    <p class="admin-field-note">Upload problems? Use <a href="<?php echo admin_url('upload-check.php'); ?>">Upload check</a> in the admin menu.</p>
 
     <?php if ($subImages): ?>
     <div class="admin-sub-images admin-sub-images--manage">
