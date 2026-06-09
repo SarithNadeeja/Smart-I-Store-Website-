@@ -13,6 +13,8 @@ function admin_render_header(string $title, string $active = ''): void
         'brands' => ['Phone Brands', 'brands.php', 'brands'],
         'models' => ['Model Management', 'models.php', 'models'],
         'items' => ['Add / Manage Items', 'items.php', 'items'],
+        'offers' => ['Offers', 'offers.php', 'offers'],
+        'preowned' => ['Pre-Owned Phones', 'preowned.php', 'preowned'],
         'stock' => ['Stock Status', 'stock.php', 'stock'],
         'security' => ['Security', 'security.php', 'security'],
     ];

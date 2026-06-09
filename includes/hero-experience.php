@@ -1,14 +1,18 @@
 <?php
 /**
- * Home hero banner (no intro overlay)
+ * Home hero banner — desktop image slideshow + mobile image slideshow
  */
-?>
-<?php
 $hero_mobile_banners = hero_mobile_banner_urls();
-$hero_scroll_over = hero_video_exists() || $hero_mobile_banners !== [];
+$hero_desktop_banners = hero_desktop_banner_urls();
+$hero_scroll_over = $hero_mobile_banners !== [] || $hero_desktop_banners !== [];
+$hero_show_video = false;
+
 $hero_banner_classes = ['hero-banner'];
 if ($hero_mobile_banners) {
     $hero_banner_classes[] = 'hero-banner--has-mobile-slides';
+}
+if ($hero_desktop_banners) {
+    $hero_banner_classes[] = 'hero-banner--has-desktop-slides';
 }
 if ($hero_scroll_over) {
     $hero_banner_classes[] = 'hero-banner--scroll-over';

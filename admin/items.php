@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 }
 
 $filters = admin_items_filter_params();
-$where = [];
+$where = ['COALESCE(i.is_preowned, FALSE) = FALSE'];
 $params = [];
 
 if ($filters['q'] !== '') {

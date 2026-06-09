@@ -172,10 +172,26 @@ function hero_mobile_banner_urls(): array
     return $urls;
 }
 
+/** Desktop hero slideshow (assets/images/pcbanner1.webp … pcbanner3.webp) */
+function hero_desktop_banner_urls(): array
+{
+    $urls = [];
+    $base = __DIR__ . '/../assets/images/';
+
+    for ($i = 1; $i <= 3; $i++) {
+        $file = $base . 'pcbanner' . $i . '.webp';
+        if (is_file($file)) {
+            $urls[] = asset_url('images/pcbanner' . $i . '.webp');
+        }
+    }
+
+    return $urls;
+}
+
 /** Hero banner video for the site-wide preload loader */
 function site_preload_videos(): array
 {
-    if (!hero_video_exists()) {
+    if (hero_desktop_banner_urls() !== [] || !hero_video_exists()) {
         return [];
     }
 

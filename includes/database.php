@@ -279,6 +279,26 @@ function db_migrate_upgrade(PDO $pdo): void
     ");
 
     db_migrate_pos_cloud($pdo);
+    db_migrate_preowned($pdo);
+}
+
+function db_migrate_preowned(PDO $pdo): void
+{
+    $cols = [
+        'is_preowned' => 'BOOLEAN NOT NULL DEFAULT FALSE',
+        'preowned_condition' => "VARCHAR(32) NOT NULL DEFAULT ''",
+        'battery_health' => 'SMALLINT NULL CHECK (battery_health IS NULL OR (battery_health >= 0 AND battery_health <= 100))',
+    ];
+    foreach ($cols as $col => $def) {
+        $exists = $pdo->query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'items' AND column_name = " . $pdo->quote($col)
+        )->fetchColumn();
+        if (!$exists) {
+            $pdo->exec("ALTER TABLE items ADD COLUMN {$col} {$def}");
+        }
+    }
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_items_preowned ON items(is_preowned) WHERE is_preowned = TRUE');
 }
 
 function db_migrate_pos_cloud(PDO $pdo): void

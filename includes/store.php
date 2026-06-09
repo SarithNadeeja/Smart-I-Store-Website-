@@ -71,11 +71,17 @@ function store_apply_item_pricing(array $item, array $row): array
     $item['current_price'] = $onSale ? (float) $salePrice : $listPrice;
     $item['on_sale'] = $onSale;
 
+    if ($onSale && $salePrice !== null) {
+        $item['offer_discount_percent'] = store_offer_discount_percent($listPrice, $salePrice);
+    } else {
+        $item['offer_discount_percent'] = 0;
+    }
+
     $tag = trim((string) ($row['tag'] ?? ''));
     if ($tag !== '' && !is_numeric($tag)) {
         $item['tag'] = $tag;
     } elseif ($onSale) {
-        $item['tag'] = 'Sale';
+        $item['tag'] = 'Offer';
     } else {
         $item['tag'] = $tag !== '' ? $tag : 'New';
     }
@@ -109,9 +115,86 @@ function store_map_item_row(array $row): array
         'stock_label' => store_stock_label(store_normalize_stock_status($row['stock_status'] ?? 'in_stock')),
         'stock_quantity' => max(0, (int) ($row['stock_quantity'] ?? 0)),
         'tag' => $row['tag'] ?? '',
+        'is_preowned' => !empty($row['is_preowned']),
+        'preowned_condition' => trim((string) ($row['preowned_condition'] ?? '')),
+        'battery_health' => isset($row['battery_health']) && $row['battery_health'] !== null && $row['battery_health'] !== ''
+            ? (int) $row['battery_health'] : null,
     ];
 
     return store_apply_item_pricing($item, $row);
+}
+
+function store_sql_exclude_preowned(string $alias = 'i'): string
+{
+    return ' COALESCE(' . $alias . '.is_preowned, FALSE) = FALSE';
+}
+
+function store_preowned_conditions(): array
+{
+    return [
+        'mint' => 'Mint condition',
+        'excellent' => 'Excellent (top condition)',
+        'good' => 'Good condition',
+        'fair' => 'Fair condition',
+    ];
+}
+
+function store_normalize_preowned_condition(string $value): string
+{
+    $value = strtolower(trim($value));
+    $allowed = store_preowned_conditions();
+
+    return array_key_exists($value, $allowed) ? $value : '';
+}
+
+function store_preowned_condition_label(string $code): string
+{
+    $allowed = store_preowned_conditions();
+
+    return $allowed[$code] ?? $code;
+}
+
+function store_brand_is_apple(int $brandId): bool
+{
+    if ($brandId <= 0 || !db_available()) {
+        return false;
+    }
+    $stmt = db()->prepare('SELECT name FROM phone_brands WHERE id = :id');
+    $stmt->execute(['id' => $brandId]);
+    $name = strtolower(trim((string) $stmt->fetchColumn()));
+
+    return $name === 'apple' || str_starts_with($name, 'apple ');
+}
+
+function store_get_default_phone_category_id(): int
+{
+    if (!db_available()) {
+        return 0;
+    }
+    $stmt = db()->query(
+        'SELECT id FROM categories WHERE is_active = TRUE ORDER BY sort_order ASC, id ASC'
+    );
+    foreach ($stmt->fetchAll() as $row) {
+        $id = (int) $row['id'];
+        if (store_category_is_phone($id)) {
+            return $id;
+        }
+    }
+
+    return 0;
+}
+
+function store_get_preowned_phones(): array
+{
+    if (!db_available()) {
+        return [];
+    }
+
+    $sql = store_item_select_sql() . '
+        WHERE i.is_active = TRUE AND i.is_preowned = TRUE
+        ORDER BY i.sort_order ASC, i.id DESC';
+
+    return array_map('store_map_item_row', db()->query($sql)->fetchAll());
 }
 
 function store_format_price_display(float $currentPrice, ?float $listPrice = null, string $prefix = ''): string
@@ -148,6 +231,38 @@ function store_item_select_sql(): string
     ";
 }
 
+function store_offer_discount_percent(float $listPrice, float $offerPrice): int
+{
+    if ($listPrice <= 0 || $offerPrice <= 0 || $offerPrice >= $listPrice) {
+        return 0;
+    }
+
+    return (int) round((1 - $offerPrice / $listPrice) * 100);
+}
+
+function store_get_flagship_offers(int $limit = 12): array
+{
+    if (!db_available()) {
+        return [];
+    }
+
+    $limit = max(1, min(24, $limit));
+    $sql = store_item_select_sql() . "
+        WHERE i.is_active = TRUE
+          AND i.sale_price IS NOT NULL
+          AND i.sale_price > 0
+          AND i.sale_price < i.price
+          AND" . store_sql_exclude_preowned() . "
+        ORDER BY i.sort_order ASC, i.id DESC
+        LIMIT :lim
+    ";
+    $stmt = db()->prepare($sql);
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return array_map('store_map_item_row', $stmt->fetchAll());
+}
+
 function store_get_featured_phones(int $limit = 4): array
 {
     if (!db_available()) {
@@ -155,7 +270,7 @@ function store_get_featured_phones(int $limit = 4): array
     }
 
     $sql = store_item_select_sql() . "
-        WHERE i.is_active = TRUE AND i.is_phone = TRUE
+        WHERE i.is_active = TRUE AND i.is_phone = TRUE AND" . store_sql_exclude_preowned() . "
         ORDER BY i.is_featured DESC, i.sort_order ASC, i.id DESC
         LIMIT :lim
     ";
@@ -175,7 +290,7 @@ function store_get_all_products(): array
     }
 
     $sql = store_item_select_sql() . "
-        WHERE i.is_active = TRUE
+        WHERE i.is_active = TRUE AND" . store_sql_exclude_preowned() . "
         ORDER BY i.sort_order ASC, i.id DESC
     ";
 
@@ -324,12 +439,16 @@ function store_get_phone_model_variants(int $itemId): array
     }
 
     $stmt = db()->prepare(
-        'SELECT brand_id, model_id, is_phone FROM items WHERE id = :id'
+        'SELECT brand_id, model_id, is_phone, is_preowned FROM items WHERE id = :id'
     );
     $stmt->execute(['id' => $itemId]);
     $anchor = $stmt->fetch();
     if (!$anchor || empty($anchor['is_phone'])) {
         return [];
+    }
+
+    if (!empty($anchor['is_preowned'])) {
+        return store_map_storage_variant_rows(store_get_item_storage_variants($itemId), $itemId);
     }
 
     $brandId = (int) ($anchor['brand_id'] ?? 0);
@@ -344,6 +463,7 @@ function store_get_phone_model_variants(int $itemId): array
          FROM items i
          LEFT JOIN item_storage_variants sv ON sv.item_id = i.id
          WHERE i.is_active = TRUE AND i.is_phone = TRUE
+           AND COALESCE(i.is_preowned, FALSE) = FALSE
            AND i.brand_id = :bid AND i.model_id = :mid
          ORDER BY i.sort_order ASC, i.id ASC, sv.sort_order ASC, sv.id ASC'
     );
@@ -411,6 +531,11 @@ function store_group_products_for_listing(array $products): array
     $indexByKey = [];
 
     foreach ($products as $product) {
+        if (!empty($product['is_preowned'])) {
+            $grouped[] = $product;
+            continue;
+        }
+
         if (empty($product['is_phone'])) {
             $grouped[] = $product;
             continue;
@@ -646,7 +771,7 @@ function store_get_products_by_category(int $categoryId, int $limit = 50): array
 
     $limit = max(1, min(100, $limit));
     $sql = store_item_select_sql() . "
-        WHERE i.is_active = TRUE AND i.category_id = :cid
+        WHERE i.is_active = TRUE AND i.category_id = :cid AND" . store_sql_exclude_preowned() . "
         ORDER BY i.sort_order ASC, i.id DESC
         LIMIT :lim
     ";

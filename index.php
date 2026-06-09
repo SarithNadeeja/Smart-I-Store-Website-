@@ -15,25 +15,27 @@ require_once __DIR__ . '/includes/navbar.php';
 <main>
     <?php require_once __DIR__ . '/includes/hero-experience.php'; ?>
 
-    <!-- Featured Phones -->
+    <?php if (!empty($flagship_offers)): ?>
+    <!-- Flagship offers (items with active promotional pricing) -->
     <section class="section section-white" id="featured">
         <div class="container">
             <div class="section-header reveal-up">
-                <span class="section-label">Featured</span>
+                <span class="section-label">Special Offers</span>
                 <h2 class="section-title">Flagship Selection</h2>
-                <p class="section-desc">Hand-picked devices that define the premium mobile experience.</p>
+                <p class="section-desc">Hand-picked deals with limited-time pricing — right after our latest arrivals.</p>
             </div>
             <div class="product-grid">
-                <?php if ($featured_phones): ?>
-                <?php foreach ($featured_phones as $i => $phone): ?>
-                <?php include __DIR__ . '/includes/product-card.php'; ?>
+                <?php foreach ($flagship_offers as $i => $phone): ?>
+                <?php
+                $product_card_offer = true;
+                include __DIR__ . '/includes/product-card.php';
+                unset($product_card_offer);
+                ?>
                 <?php endforeach; ?>
-                <?php else: ?>
-                <p class="section-desc">No featured phones yet. Add items in the <a href="<?php echo base_url('admin/'); ?>">admin panel</a>.</p>
-                <?php endif; ?>
             </div>
         </div>
     </section>
+    <?php endif; ?>
 
     <?php if (!empty($category_slides)): ?>
     <?php require __DIR__ . '/includes/category-carousels.php'; ?>

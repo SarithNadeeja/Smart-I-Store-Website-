@@ -60,204 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $isUpdate = $id > 0;
-        $name = trim($_POST['name'] ?? '');
-        $tag = trim($_POST['tag'] ?? '');
-        $color = trim($_POST['color'] ?? '#333333');
-        $categoryId = (int) ($_POST['category_id'] ?? 0);
-        $brandId = (int) ($_POST['brand_id'] ?? 0);
-        $modelId = (int) ($_POST['model_id'] ?? 0);
-        $isFeatured = isset($_POST['is_featured']);
-        $isActive = isset($_POST['is_active']);
-        $sortOrder = (int) ($_POST['sort_order'] ?? 0);
-        $stockStatus = store_normalize_stock_status($_POST['stock_status'] ?? 'in_stock');
-        $costPrice = max(0, (float) ($_POST['cost_price'] ?? 0));
-        $reorderLevel = max(0, (int) ($_POST['reorder_level'] ?? 5));
-        $price = (float) ($_POST['price'] ?? 0);
-        $salePriceRaw = trim($_POST['sale_price'] ?? '');
-        $salePriceDb = null;
-        if ($salePriceRaw !== '') {
-            $salePriceDb = max(0, (float) $salePriceRaw);
-            if ($salePriceDb <= 0) {
-                $salePriceDb = null;
-            }
-        }
-        if ($tag !== '' && is_numeric($tag) && $salePriceDb === null) {
-            $legacySale = (float) $tag;
-            if ($legacySale > 0 && $legacySale < $price) {
-                $salePriceDb = $legacySale;
-                $tag = 'Sale';
-            }
-        }
 
-        if ($name === '') {
-            throw new RuntimeException('Item name is required.');
-        }
-        if ($brandId <= 0) {
-            throw new RuntimeException('Select a brand.');
-        }
-        if ($modelId <= 0) {
-            throw new RuntimeException('Select a model.');
-        }
-        if ($categoryId <= 0) {
-            throw new RuntimeException('Select a category.');
-        }
-
-        $isPhone = store_category_is_phone($categoryId);
-        $phoneVariant = store_parse_phone_variant_from_post($_POST);
-        $phoneSpecs = store_parse_phone_specs_from_post($_POST);
-        $phoneVariants = [];
-
-        if ($isPhone) {
-            store_validate_phone_variant($phoneVariant);
-            $synced = store_sync_item_pricing_from_variant($phoneVariant);
-            $price = $synced['price'];
-            $costPrice = $synced['cost_price'];
-            $stockStatus = $phoneVariant['stock_status'];
-            $stockQuantity = 1;
-            $phoneVariants = [$phoneVariant];
-        } else {
-            $stockQuantity = max(0, (int) ($_POST['stock_quantity'] ?? 0));
-        }
-        if (!$isPhone && $price < 0) {
-            throw new RuntimeException('Price must be zero or greater.');
-        }
-        if ($salePriceDb !== null && $salePriceDb >= $price) {
-            throw new RuntimeException('Sale price must be lower than the list price.');
-        }
-
-        $modelCheck = $pdo->prepare(
-            'SELECT id FROM product_models WHERE id = :mid AND brand_id = :bid AND is_active = TRUE'
-        );
-        $modelCheck->execute(['mid' => $modelId, 'bid' => $brandId]);
-        if (!$modelCheck->fetch()) {
-            throw new RuntimeException('Selected model does not belong to the chosen brand.');
-        }
-
-        $mainImage = $item['main_image'] ?? '';
-        if (!empty($_FILES['main_image']['name'])) {
-            $newMain = uploads_save_image($_FILES['main_image']);
-            if ($newMain) {
-                uploads_delete_file($mainImage);
-                $mainImage = $newMain;
-            }
-        }
-
-        if ($isUpdate) {
-            $stmt = $pdo->prepare(
-                'UPDATE items SET category_id = :cid, brand_id = :bid, model_id = :mid, name = :n, price = :p,
-                 sale_price = :sp, tag = :t, color = :col, is_phone = :ip, is_featured = :if, main_image = :img,
-                 is_active = :a, sort_order = :s, stock_status = :st, stock_quantity = :qty, cost_price = :cost,
-                 reorder_level = :reorder
-                 WHERE id = :id'
-            );
-            $stmt->execute([
-                'cid' => $categoryId,
-                'bid' => $brandId,
-                'mid' => $modelId,
-                'n' => $name,
-                'p' => $price,
-                'sp' => $salePriceDb,
-                't' => $tag,
-                'col' => $color,
-                'ip' => $isPhone,
-                'if' => $isFeatured,
-                'img' => $mainImage,
-                'a' => $isActive,
-                's' => $sortOrder,
-                'st' => $stockStatus,
-                'qty' => $stockQuantity,
-                'cost' => $costPrice,
-                'reorder' => $reorderLevel,
-                'id' => $id,
-            ]);
-        } else {
-            $stmt = $pdo->prepare(
-                'INSERT INTO items (category_id, brand_id, model_id, name, price, sale_price, tag, color, is_phone,
-                 is_featured, main_image, is_active, sort_order, stock_status, stock_quantity, cost_price, reorder_level)
-                 VALUES (:cid, :bid, :mid, :n, :p, :sp, :t, :col, :ip, :if, :img, :a, :s, :st, :qty, :cost, :reorder)
-                 RETURNING id'
-            );
-            $stmt->execute([
-                'cid' => $categoryId,
-                'bid' => $brandId,
-                'mid' => $modelId,
-                'n' => $name,
-                'p' => $price,
-                'sp' => $salePriceDb,
-                't' => $tag,
-                'col' => $color,
-                'ip' => $isPhone,
-                'if' => $isFeatured,
-                'img' => $mainImage,
-                'a' => $isActive,
-                's' => $sortOrder,
-                'st' => $stockStatus,
-                'qty' => $stockQuantity,
-                'cost' => $costPrice,
-                'reorder' => $reorderLevel,
-            ]);
-            $id = (int) $stmt->fetchColumn();
-        }
+        $id = admin_save_item_request($pdo, $id, $item, ['manage_offer' => false]);
 
         $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
-        $uploadBytes = 0;
-        if (!empty($_FILES['main_image']['name']) && (int) ($_FILES['main_image']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
-            $uploadBytes += (int) ($_FILES['main_image']['size'] ?? 0);
-        }
-        foreach ($subFiles as $file) {
-            $uploadBytes += (int) ($file['size'] ?? 0);
-        }
-        if ($uploadBytes > UPLOAD_MAX_TOTAL_BYTES) {
-            throw new RuntimeException(
-                'Total upload size is too large (max '
-                . (int) (UPLOAD_MAX_TOTAL_BYTES / 1024 / 1024)
-                . ' MB per save). Upload fewer images or use smaller files.'
-            );
-        }
-
-        if ($subFiles) {
-            if ($id <= 0) {
-                throw new RuntimeException('Save the item first, then add sub images.');
-            }
-
-            $maxSub = store_max_sub_images();
-            $existingSub = store_count_item_sub_images($id);
-            $slotsLeft = $maxSub - $existingSub;
-
-            if ($slotsLeft <= 0) {
-                throw new RuntimeException('Maximum of ' . $maxSub . ' sub images allowed per product.');
-            }
-
-            if (count($subFiles) > $slotsLeft) {
-                throw new RuntimeException(
-                    'You can add ' . $slotsLeft . ' more sub image(s) (' . $existingSub . '/' . $maxSub . ' already saved).'
-                );
-            }
-
-            $orderStmt = $pdo->prepare(
-                'SELECT COALESCE(MAX(sort_order), -1) + 1 FROM item_images WHERE item_id = :id'
-            );
-            $orderStmt->execute(['id' => $id]);
-            $order = (int) $orderStmt->fetchColumn();
-
-            $ins = $pdo->prepare(
-                'INSERT INTO item_images (item_id, image_path, sort_order) VALUES (:item, :path, :ord)'
-            );
-            $uploaded = 0;
-            foreach ($subFiles as $file) {
-                if ($uploaded >= $slotsLeft) {
-                    break;
-                }
-                $path = uploads_save_image($file);
-                if ($path) {
-                    $ins->execute(['item' => $id, 'path' => $path, 'ord' => $order++]);
-                    $uploaded++;
-                }
-            }
-        }
-
-        store_replace_item_phone_details($pdo, $id, $isPhone, $phoneVariants, $phoneSpecs);
-
         $flashMsg = $isUpdate ? 'Item updated.' : 'Item created.';
         if (!empty($subFiles)) {
             $flashMsg = $isUpdate
@@ -289,6 +95,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
 ?>
 <section class="admin-panel admin-panel--wide">
     <h2><?php echo $item ? 'Edit item' : 'Add item'; ?></h2>
+    <p class="admin-field-note">Set the retail price here. Discounts and promotional pricing are managed under <a href="<?php echo admin_url('offers.php'); ?>">Offers</a>.</p>
 
     <?php if ($subImages): ?>
     <div class="admin-sub-images admin-sub-images--manage">
@@ -372,28 +179,18 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                            value="<?php echo htmlspecialchars($storageVariant['rom'] ?? ''); ?>" placeholder="e.g. 128GB">
                 </div>
                 <div class="admin-field">
-                    <label for="phone_variant_price">List price (Rs.)</label>
+                    <label for="phone_variant_price">Retail price (Rs.)</label>
                     <input type="number" id="phone_variant_price" name="phone_variant_price" min="0" step="0.01" required
                            value="<?php echo $storageVariant && $storageVariant['price'] !== null ? htmlspecialchars((string) $storageVariant['price']) : ''; ?>"
                            placeholder="e.g. 200000">
-                    <p class="admin-field-note">Normal price on the website.</p>
+                    <p class="admin-field-note">Price shown to customers on the website.</p>
                 </div>
                 <div class="admin-field">
-                    <label for="sale_price_phone">Sale price (Rs.) <small>optional</small></label>
-                    <input type="number" id="sale_price_phone" name="sale_price" min="0" step="0.01"
-                           value="<?php
-                           $saleVal = $item['sale_price'] ?? null;
-                           echo $saleVal !== null && $saleVal !== '' ? htmlspecialchars((string) $saleVal) : '';
-                           ?>"
-                           placeholder="e.g. 180000">
-                    <p class="admin-field-note">Lower than list price — old price shown crossed out.</p>
-                </div>
-                <div class="admin-field">
-                    <label for="phone_variant_cost">Your cost (Rs.) <small>not shown on website</small></label>
+                    <label for="phone_variant_cost">Purchase cost (Rs.) <small>internal only</small></label>
                     <input type="number" id="phone_variant_cost" name="phone_variant_cost" min="0" step="0.01" required
                            value="<?php echo htmlspecialchars((string) ($storageVariant['cost_price'] ?? 0)); ?>"
                            placeholder="What you paid">
-                    <p class="admin-field-note">For POS profit only. Customers never see this.</p>
+                    <p class="admin-field-note">Used for POS profit tracking. Never shown to customers.</p>
                 </div>
                 <div class="admin-field">
                     <label for="phone_variant_stock">Stock</label>
@@ -429,36 +226,17 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                 <p class="admin-field-note">For accessories and other items. Phones are always one unit per listing.</p>
             </div>
             <div class="admin-field" id="item-cost-field">
-                <label for="cost_price">Cost price (Rs.) <small>for POS profit</small></label>
+                <label for="cost_price">Purchase cost (Rs.) <small>internal only</small></label>
                 <input type="number" id="cost_price" name="cost_price" min="0" step="0.01"
                        value="<?php echo htmlspecialchars((string) ($item['cost_price'] ?? 0)); ?>">
-            </div>
-            <div class="admin-field">
-                <label for="reorder_level">Reorder level</label>
-                <input type="number" id="reorder_level" name="reorder_level" min="0" step="1"
-                       value="<?php echo (int) ($item['reorder_level'] ?? 5); ?>">
-                <p class="admin-field-note">Minimum stock before low-stock alerts (e.g. reorder when qty ≤ this).</p>
             </div>
         </div>
 
         <div class="admin-field-row" id="item-pricing-standard"<?php echo $initialIsPhone ? ' hidden' : ''; ?>>
             <div class="admin-field">
-                <label for="price">List price (Rs.)</label>
+                <label for="price">Retail price (Rs.)</label>
                 <input type="number" id="price" name="price" min="0" step="0.01" value="<?php echo htmlspecialchars((string) ($item['price'] ?? '0')); ?>" required>
-                <p class="admin-field-note">Normal price on the website.</p>
-            </div>
-        </div>
-
-        <div class="admin-field-row" id="item-sale-price-row"<?php echo $initialIsPhone ? ' hidden' : ''; ?>>
-            <div class="admin-field">
-                <label for="sale_price">Sale price (Rs.) <small>optional</small></label>
-                <input type="number" id="sale_price" name="sale_price" min="0" step="0.01"
-                       value="<?php
-                       $saleVal = $item['sale_price'] ?? null;
-                       echo $saleVal !== null && $saleVal !== '' ? htmlspecialchars((string) $saleVal) : '';
-                       ?>"
-                       placeholder="e.g. 180000">
-                <p class="admin-field-note">Must be lower than list price. Shown with the old price crossed out.</p>
+                <p class="admin-field-note">Price shown to customers on the website.</p>
             </div>
         </div>
 
@@ -666,7 +444,6 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     var categorySelect = document.getElementById('category_id');
     var phoneVariantsSection = document.getElementById('phone-variants-section');
     var itemPricingStandard = document.getElementById('item-pricing-standard');
-    var itemSalePriceRow = document.getElementById('item-sale-price-row');
     var itemCostField = document.getElementById('item-cost-field');
     var itemStockStatusField = document.getElementById('item-stock-status-field');
     var itemStockQtyField = document.getElementById('item-stock-qty-field');
@@ -693,10 +470,6 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         if (itemPricingStandard) {
             itemPricingStandard.hidden = isPhone;
             itemPricingStandard.style.display = isPhone ? 'none' : '';
-        }
-        if (itemSalePriceRow) {
-            itemSalePriceRow.hidden = isPhone;
-            itemSalePriceRow.style.display = isPhone ? 'none' : '';
         }
         if (phoneVariantsSection) {
             phoneVariantsSection.style.display = isPhone ? '' : 'none';

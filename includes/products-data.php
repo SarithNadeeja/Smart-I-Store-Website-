@@ -2,7 +2,7 @@
 
 require_once __DIR__ . '/store.php';
 
-$featured_phones = store_get_featured_phones(4);
+$flagship_offers = store_get_flagship_offers(12);
 $categories = store_get_categories();
 $category_slides = store_get_home_category_slides();
 

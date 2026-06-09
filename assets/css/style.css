@@ -750,15 +750,13 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
 }
 
 /* Hero stays fixed; page content scrolls over (home) */
-.hero-banner--scroll-over {
-    height: 100vh;
-    height: 100dvh;
-    overflow: visible;
-    background: transparent;
+.page-home {
+    --hero-desktop-banner-h: clamp(280px, 36vw, 460px);
 }
 
-.hero-banner--scroll-over .hero-banner__scroll-spacer {
-    display: none;
+.hero-banner--scroll-over {
+    overflow: visible;
+    background: transparent;
 }
 
 .page-home main {
@@ -771,41 +769,139 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     z-index: 2;
 }
 
-/* Pull first section up — content sits over the video; scroll lifts it immediately */
+/* Home image banners — solid white navbar on desktop */
 @media (min-width: 769px) {
-    .page-home main > section:not(#hero):first-of-type {
-        margin-top: calc(-100dvh + 18vh);
+    .page-home .site-header--home-banner {
+        background: #ffffff;
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+    }
+
+    .page-home .site-header--home-banner .logo-text,
+    .page-home .site-header--home-banner .nav-link {
+        color: var(--text);
+    }
+
+    .page-home .site-header--home-banner .nav-link.is-active {
+        color: var(--primary);
+    }
+
+    .page-home .site-header--home-banner .nav-toggle-bar {
+        background: var(--text);
+    }
+
+    .page-home .site-header--home-banner .social-links--header .social-link {
+        color: var(--text);
+        border-color: rgba(0, 0, 0, 0.1);
+        background: rgba(0, 0, 0, 0.04);
+    }
+
+    .page-home .site-header--home-banner .logo {
+        visibility: visible;
+        pointer-events: auto;
     }
 }
 
+/* Mobile home — transparent navbar over fullscreen banner */
 @media (max-width: 768px) {
+    .page-home .site-header--home-banner {
+        background: transparent;
+        box-shadow: none;
+    }
+
+    .page-home .site-header--home-banner .logo-text,
+    .page-home .site-header--home-banner .nav-link {
+        color: #000000;
+    }
+
+    .page-home .site-header--home-banner .nav-toggle-bar {
+        background: #000000;
+    }
+
+    .page-home .site-header--home-banner.is-scrolled {
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    }
+
+    .page-home .site-header--home-banner.is-scrolled .logo-text,
+    .page-home .site-header--home-banner.is-scrolled .nav-link {
+        color: var(--text);
+    }
+}
+
+/* Desktop — compact image banner + scroll-over */
+@media (min-width: 769px) {
+    .hero-banner--has-desktop-slides {
+        margin-top: var(--header-h);
+        height: var(--hero-desktop-banner-h);
+        min-height: 0;
+        overflow: visible;
+        background: transparent;
+    }
+
+    .hero-banner--has-desktop-slides .hero-banner__desktop-slides {
+        position: fixed;
+        top: var(--header-h);
+        left: 0;
+        width: 100%;
+        height: var(--hero-desktop-banner-h);
+        z-index: 1;
+        overflow: hidden;
+        pointer-events: none;
+        background: var(--hero-banner-bg);
+    }
+
+    .hero-banner--has-desktop-slides .hero-banner__desktop-slide {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+        opacity: 0;
+        transition: opacity 0.85s ease-in-out;
+        will-change: opacity;
+    }
+
+    .hero-banner--has-desktop-slides .hero-banner__desktop-slide.is-active {
+        opacity: 1;
+    }
+
+    .hero-banner--has-desktop-slides .hero-banner__mobile-slides {
+        display: none !important;
+    }
+
+    .page-home main > section:not(#hero):first-of-type {
+        margin-top: calc(-1 * var(--hero-desktop-banner-h) + 56px);
+    }
+}
+
+/* Mobile — full-height image banner + scroll-over */
+@media (max-width: 768px) {
+    .hero-banner--scroll-over.hero-banner--has-mobile-slides {
+        height: 100dvh;
+    }
+
+    .hero-banner--scroll-over .hero-banner__mobile-slides {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100dvh;
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    .hero-banner--has-mobile-slides .hero-banner__desktop-slides {
+        display: none !important;
+    }
+
     .page-home main > section:not(#hero):first-of-type {
         margin-top: calc(-100dvh + 22vh);
     }
-}
-
-.hero-banner--scroll-over .hero-banner__bg,
-.hero-banner--scroll-over .hero-banner__stage--video,
-.hero-banner--scroll-over .hero-banner__mobile-slides {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    height: 100dvh;
-    pointer-events: none;
-}
-
-.hero-banner--scroll-over .hero-banner__bg {
-    z-index: 0;
-}
-
-.hero-banner--scroll-over .hero-banner__stage--video {
-    z-index: 1;
-}
-
-.hero-banner--scroll-over .hero-banner__mobile-slides {
-    z-index: 0;
 }
 
 /* Banner video backdrop — flat warm gray for green-screen compositing */
@@ -1094,13 +1190,8 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     }
 }
 
-/* Mobile — image slideshow (fixed under scrolling content) */
+/* Mobile — image slideshow */
 @media (max-width: 768px) {
-    .hero-banner--has-mobile-slides .hero-banner__bg,
-    .hero-banner--has-mobile-slides .hero-banner__stage--video {
-        display: none !important;
-    }
-
     .hero-banner--has-mobile-slides .hero-banner__mobile-slides {
         overflow: hidden;
         background: var(--hero-banner-bg);
@@ -1112,7 +1203,7 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
         width: 100%;
         height: 100%;
         object-fit: cover;
-        object-position: center;
+        object-position: top center;
         opacity: 0;
         transition: opacity 0.85s ease-in-out;
         will-change: opacity;
@@ -1232,6 +1323,94 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
     background: var(--primary);
     color: var(--black);
     border-radius: 100px;
+}
+
+.product-offer-label {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 3;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 7px 14px;
+    background: var(--black);
+    color: var(--primary);
+    border-radius: 100px;
+}
+
+.product-offer-discount {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 3;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 7px 12px;
+    background: #e74c3c;
+    color: #fff;
+    border-radius: 100px;
+    box-shadow: 0 4px 14px rgba(231, 76, 60, 0.35);
+}
+
+.product-card:has(.product-offer-discount) .product-stock {
+    top: auto;
+    bottom: 16px;
+    right: 16px;
+}
+
+.product-preowned-label {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    z-index: 3;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 7px 14px;
+    background: #2c3e50;
+    color: #fff;
+    border-radius: 100px;
+}
+
+.product-preowned-condition {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 3;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 7px 12px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #2c3e50;
+    border: 1px solid rgba(44, 62, 80, 0.15);
+    border-radius: 100px;
+    max-width: 55%;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.product-card:has(.product-preowned-condition) .product-stock {
+    top: auto;
+    bottom: 16px;
+    right: 16px;
+}
+
+.product-meta--battery {
+    color: var(--gray-600);
+    font-weight: 500;
+}
+
+.product-detail__tag--preowned {
+    background: #2c3e50;
+    color: #fff;
+}
+
+.page-hero--preowned {
+    background: linear-gradient(135deg, #f8f9fa 0%, #eef2f7 100%);
 }
 
 .product-image {

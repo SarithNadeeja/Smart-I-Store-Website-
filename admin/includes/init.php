@@ -7,6 +7,7 @@ smartistore_session_start();
 require_once dirname(__DIR__, 2) . '/includes/database.php';
 require_once dirname(__DIR__, 2) . '/includes/store.php';
 require_once dirname(__DIR__, 2) . '/includes/uploads.php';
+require_once __DIR__ . '/item-persistence.php';
 
 function admin_url(string $path = ''): string
 {

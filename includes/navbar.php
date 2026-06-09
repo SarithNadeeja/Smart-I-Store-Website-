@@ -1,10 +1,18 @@
 <?php
 $is_home = is_current_page('index.php');
-$header_class = 'site-header' . ($is_home ? ' site-header--hero' : '');
+$header_class = 'site-header';
+if ($is_home) {
+    if (hero_desktop_banner_urls() !== [] || hero_mobile_banner_urls() !== []) {
+        $header_class .= ' site-header--home-banner';
+    } else {
+        $header_class .= ' site-header--hero';
+    }
+}
 
 $nav_links = [
     ['label' => 'Home', 'href' => page_url('index.php'), 'page' => 'index.php'],
     ['label' => 'Products', 'href' => page_url('products.php'), 'page' => 'products.php'],
+    ['label' => 'Pre-Owned Market', 'href' => page_url('pre-owned.php'), 'page' => 'pre-owned.php'],
     ['label' => 'About Us', 'href' => page_url('about.php'), 'page' => 'about.php'],
     ['label' => 'Contact', 'href' => page_url('contact.php'), 'page' => 'contact.php'],
 ];

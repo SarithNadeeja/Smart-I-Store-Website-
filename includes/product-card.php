@@ -14,6 +14,17 @@ $categoryId = (int) ($phone['category_id'] ?? 0);
 $stockStatus = store_normalize_stock_status($phone['stock_status'] ?? 'in_stock');
 $delay = ($i % 4) * 0.08;
 $cardHidden = !empty($product_card_hidden ?? false);
+$showOfferAd = !empty($product_card_offer ?? false);
+$showPreowned = !empty($product_card_preowned ?? false) || !empty($phone['is_preowned']);
+$preownedConditionLabel = $showPreowned
+    ? store_preowned_condition_label($phone['preowned_condition'] ?? '')
+    : '';
+$offerDiscount = (int) ($phone['offer_discount_percent'] ?? 0);
+if ($showOfferAd && $offerDiscount <= 0 && !empty($phone['on_sale'])) {
+    $listForPct = (float) ($phone['list_price'] ?? $phone['price'] ?? 0);
+    $currentForPct = (float) ($phone['current_price'] ?? $phone['price'] ?? 0);
+    $offerDiscount = store_offer_discount_percent($listForPct, $currentForPct);
+}
 $hasImage = !empty($phone['image']);
 $imgUrl = $hasImage ? upload_url($phone['image']) : '';
 $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
@@ -27,7 +38,13 @@ $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
          data-category-id="<?php echo $categoryId; ?>"
          data-price="<?php echo (float) ($phone['price'] ?? 0); ?>"
          data-delay="<?php echo $delay; ?>">
-    <?php if (!empty($phone['tag'])): ?>
+    <?php if ($showPreowned && $preownedConditionLabel !== ''): ?>
+    <span class="product-preowned-label">Pre-Owned</span>
+    <span class="product-preowned-condition"><?php echo htmlspecialchars($preownedConditionLabel); ?></span>
+    <?php elseif ($showOfferAd && $offerDiscount > 0): ?>
+    <span class="product-offer-label">Offer</span>
+    <span class="product-offer-discount"><?php echo $offerDiscount; ?>% OFF</span>
+    <?php elseif (!empty($phone['tag']) && empty($phone['on_sale'])): ?>
     <span class="product-tag"><?php echo htmlspecialchars($phone['tag']); ?></span>
     <?php endif; ?>
     <?php if ($stockStatus !== 'in_stock'): ?>
@@ -50,6 +67,9 @@ $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
         <h3 class="product-name"><?php echo htmlspecialchars($phone['name']); ?></h3>
         <?php if (!empty($phone['meta'])): ?>
         <p class="product-meta"><?php echo htmlspecialchars($phone['meta']); ?></p>
+        <?php endif; ?>
+        <?php if ($showPreowned && !empty($phone['battery_health'])): ?>
+        <p class="product-meta product-meta--battery">Battery: <?php echo (int) $phone['battery_health']; ?>%</p>
         <?php endif; ?>
         <p class="product-price"><?php
             $cardPrefix = !empty($phone['price_from']) ? 'From ' : '';

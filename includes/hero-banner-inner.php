@@ -8,8 +8,28 @@ if (!isset($hero_video_url)) {
 $hero_video_exists = file_exists($hero_video_file);
 $hero_autoplay = $hero_autoplay ?? true;
 $hero_mobile_banners = $hero_mobile_banners ?? hero_mobile_banner_urls();
-$hero_scroll_over = $hero_scroll_over ?? ($hero_video_exists || $hero_mobile_banners !== []);
+$hero_desktop_banners = $hero_desktop_banners ?? hero_desktop_banner_urls();
+$hero_show_video = $hero_show_video ?? (
+    $hero_desktop_banners === [] && $hero_mobile_banners === [] && $hero_video_exists
+);
+$hero_scroll_over = $hero_scroll_over ?? ($hero_mobile_banners !== [] || $hero_desktop_banners !== []);
 ?>
+<?php if ($hero_desktop_banners): ?>
+<div class="hero-banner__desktop-slides" id="hero-desktop-slides" aria-hidden="true">
+    <?php foreach ($hero_desktop_banners as $index => $bannerUrl): ?>
+    <img
+        class="hero-banner__desktop-slide<?php echo $index === 0 ? ' is-active' : ''; ?>"
+        src="<?php echo htmlspecialchars($bannerUrl); ?>"
+        alt=""
+        width="1920"
+        height="640"
+        loading="<?php echo $index === 0 ? 'eager' : 'lazy'; ?>"
+        decoding="async"
+    >
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <?php if ($hero_mobile_banners): ?>
 <div class="hero-banner__mobile-slides" id="hero-mobile-slides" aria-hidden="true">
     <?php foreach ($hero_mobile_banners as $index => $bannerUrl): ?>
@@ -26,6 +46,7 @@ $hero_scroll_over = $hero_scroll_over ?? ($hero_video_exists || $hero_mobile_ban
 </div>
 <?php endif; ?>
 
+<?php if ($hero_show_video && $hero_video_exists): ?>
 <div class="hero-banner__bg" aria-hidden="true">
     <div class="hero-banner__bg-base"></div>
     <div class="hero-banner__bg-glow"></div>
@@ -33,7 +54,6 @@ $hero_scroll_over = $hero_scroll_over ?? ($hero_video_exists || $hero_mobile_ban
 </div>
 
 <div class="hero-banner__stage hero-banner__stage--video" id="hero-stage">
-    <?php if ($hero_video_exists): ?>
     <video
         id="hero-source-video"
         class="hero-banner__video-src"
@@ -52,11 +72,7 @@ $hero_scroll_over = $hero_scroll_over ?? ($hero_video_exists || $hero_mobile_ban
         class="hero-banner__canvas"
         aria-label="Smartphone showcase animation"
     ></canvas>
-    <?php else: ?>
-    <p class="hero-banner__error">
-        Video not found. Add <strong>assets/videos/website.webm</strong> to your project.
-    </p>
-    <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <h1 class="visually-hidden">Smart I Store</h1>

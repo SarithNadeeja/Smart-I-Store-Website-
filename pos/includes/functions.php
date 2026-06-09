@@ -84,7 +84,7 @@ function pos_search_products(string $q, int $limit = 20): array
 {
     $q = trim($q);
     $sql = "
-        SELECT i.id, i.name, i.price, i.cost_price, i.stock_quantity, i.reorder_level, i.is_phone,
+        SELECT i.id, i.name, i.price, i.cost_price, i.stock_quantity, i.is_phone,
                c.title AS category_name, b.name AS brand_name
         FROM items i
         LEFT JOIN categories c ON c.id = i.category_id
@@ -944,9 +944,9 @@ function pos_dashboard_stats(): array
     )->fetchColumn();
     $lowStock = $pdo->query(
         "SELECT i.name, COALESCE(NULLIF(c.description, ''), c.title) AS category_name,
-                i.stock_quantity, i.reorder_level
+                i.stock_quantity
          FROM items i LEFT JOIN categories c ON c.id = i.category_id
-         WHERE i.is_active = TRUE AND i.stock_quantity <= i.reorder_level
+         WHERE i.is_active = TRUE AND i.is_phone = FALSE AND i.stock_quantity <= 5
          ORDER BY i.stock_quantity ASC LIMIT 10"
     )->fetchAll();
     $recentInvoices = $pdo->query(

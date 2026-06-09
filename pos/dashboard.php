@@ -68,7 +68,7 @@ pos_render_header('Dashboard', 'dashboard');
             <?php foreach ($stats['low_stock'] as $item): ?>
             <li>
                 <strong><?php echo htmlspecialchars($item['name']); ?></strong>
-                <span><?php echo (int) $item['stock_quantity']; ?> / <?php echo (int) $item['reorder_level']; ?></span>
+                <span><?php echo (int) $item['stock_quantity']; ?> in stock</span>
             </li>
             <?php endforeach; ?>
         </ul>

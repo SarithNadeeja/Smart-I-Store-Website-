@@ -61,7 +61,7 @@ if ($product) {
     $images = $product['images'];
     $mainImage = $images[0] ?? '';
     $stockStatus = $product['stock_status'] ?? 'in_stock';
-    $hasVariants = count($variantOptions) > 1;
+    $hasVariants = count($variantOptions) > 1 && empty($product['is_preowned']);
     if ($hasVariants && count($variantOptions) > 1) {
         $displayCurrent = min(array_map(static fn(array $v): float => (float) $v['effective_price'], $variantOptions));
         $displayList = null;
@@ -79,7 +79,11 @@ if ($product) {
             <nav class="product-breadcrumb reveal-up" aria-label="Breadcrumb">
                 <a href="<?php echo page_url('index.php'); ?>">Home</a>
                 <span aria-hidden="true">/</span>
+                <?php if (!empty($product['is_preowned'])): ?>
+                <a href="<?php echo page_url('pre-owned.php'); ?>">Pre-Owned Market</a>
+                <?php else: ?>
                 <a href="<?php echo page_url('products.php'); ?>">Products</a>
+                <?php endif; ?>
                 <span aria-hidden="true">/</span>
                 <span><?php echo htmlspecialchars($product['name']); ?></span>
             </nav>
@@ -130,7 +134,9 @@ if ($product) {
                 </div>
 
                 <div class="product-detail__info">
-                    <?php if (!empty($product['tag'])): ?>
+                    <?php if (!empty($product['is_preowned'])): ?>
+                    <span class="product-detail__tag product-detail__tag--preowned">Pre-Owned</span>
+                    <?php elseif (!empty($product['tag'])): ?>
                     <span class="product-detail__tag"><?php echo htmlspecialchars($product['tag']); ?></span>
                     <?php endif; ?>
 
@@ -219,6 +225,18 @@ if ($product) {
                                 <dt>Category</dt>
                                 <dd><?php echo htmlspecialchars($product['category_title']); ?></dd>
                             </div>
+                            <?php endif; ?>
+                            <?php if (!empty($product['is_preowned'])): ?>
+                            <div>
+                                <dt>Condition</dt>
+                                <dd><?php echo htmlspecialchars(store_preowned_condition_label($product['preowned_condition'] ?? '')); ?></dd>
+                            </div>
+                            <?php if (!empty($product['battery_health'])): ?>
+                            <div>
+                                <dt>Battery health</dt>
+                                <dd><?php echo (int) $product['battery_health']; ?>%</dd>
+                            </div>
+                            <?php endif; ?>
                             <?php endif; ?>
                             <div>
                                 <dt>Availability</dt>

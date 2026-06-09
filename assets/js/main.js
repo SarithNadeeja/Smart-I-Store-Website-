@@ -13,8 +13,8 @@
        Fullscreen hero — green screen removal on radial background
        -------------------------------------------------------------------------- */
     (function initHeroChroma() {
-        if (window.matchMedia('(max-width: 768px)').matches
-            && document.querySelector('.hero-banner--has-mobile-slides')) {
+        if (document.querySelector('.hero-banner--has-mobile-slides')
+            || document.querySelector('.hero-banner--has-desktop-slides')) {
             return;
         }
 
