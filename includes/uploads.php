@@ -211,98 +211,156 @@ function uploads_temp_is_trusted(string $tmp): bool
     return false;
 }
 
-function uploads_store_failure_detail(string $tmp, string $dest): string
+function uploads_log_error(string $message): void
 {
-    $parts = [];
+    $line = date('Y-m-d H:i:s') . ' ' . $message . PHP_EOL;
+    $logFile = uploads_base_dir() . '/upload-error.log';
+    @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+}
+
+function uploads_store_failure_detail(string $tmp, string $dest, array $steps = []): string
+{
+    clearstatcache(true, $tmp);
+    clearstatcache(true, $dest);
+
     $parent = dirname($dest);
+    $parts = $steps;
+
+    $parts[] = 'dest=' . $dest;
+    $parts[] = 'dest_exists=' . (is_file($dest) ? 'yes' : 'no');
+    $parts[] = 'dest_bytes=' . (is_file($dest) ? (string) filesize($dest) : '0');
+    $parts[] = 'tmp=' . $tmp;
+    $parts[] = 'tmp_exists=' . (is_file($tmp) ? 'yes' : 'no');
+    $parts[] = 'tmp_bytes=' . (is_file($tmp) ? (string) filesize($tmp) : '0');
+    $parts[] = 'is_uploaded_file=' . (is_uploaded_file($tmp) ? 'yes' : 'no');
+    $parts[] = 'parent_writable=' . (is_dir($parent) && is_writable($parent) ? 'yes' : 'no');
+    $parts[] = 'upload_tmp_dir=' . (ini_get('upload_tmp_dir') ?: '(default)');
 
     if (!is_dir($parent)) {
-        $parts[] = 'folder missing: assets/uploads/items';
+        $parts[] = 'reason=folder missing';
     } elseif (!is_writable($parent)) {
-        $parts[] = 'folder not writable: assets/uploads/items';
-    }
-
-    if ($tmp === '' || !is_file($tmp)) {
-        $parts[] = 'temp file missing';
+        $parts[] = 'reason=folder not writable';
+    } elseif ($tmp === '' || !is_file($tmp)) {
+        $parts[] = 'reason=temp file missing';
     } elseif (filesize($tmp) <= 0) {
-        $parts[] = 'temp file empty';
+        $parts[] = 'reason=temp file empty';
     }
 
     $free = @disk_free_space($parent);
     if ($free !== false && $free < 1024 * 1024) {
-        $parts[] = 'disk nearly full';
+        $parts[] = 'reason=disk nearly full';
     }
 
     $last = error_get_last();
     if (is_array($last) && !empty($last['message'])) {
-        $parts[] = trim((string) $last['message']);
+        $parts[] = 'php=' . trim((string) $last['message']);
     }
 
-    return $parts !== [] ? ' ' . implode('; ', $parts) : '';
+    return implode(' | ', $parts);
 }
 
 function uploads_store_temp_file(string $tmp, string $dest): void
 {
+    $steps = [];
     $parent = dirname($dest);
+
     if (!is_dir($parent)) {
-        @mkdir($parent, 0755, true);
+        if (!@mkdir($parent, 0755, true) && !is_dir($parent)) {
+            $detail = uploads_store_failure_detail($tmp, $dest, ['step=mkdir_failed']);
+            uploads_log_error($detail);
+            throw new RuntimeException('Could not save uploaded image. ' . $detail);
+        }
     }
 
-    if (@move_uploaded_file($tmp, $dest) && is_file($dest) && filesize($dest) > 0) {
+    if (is_file($dest) && filesize($dest) <= 0) {
+        @unlink($dest);
+    }
+
+    clearstatcache(true, $tmp);
+    clearstatcache(true, $dest);
+
+    $moved = @move_uploaded_file($tmp, $dest);
+    clearstatcache(true, $dest);
+    if ($moved && is_file($dest)) {
+        return;
+    }
+    $steps[] = 'move_uploaded_file=' . ($moved ? 'true_but_no_dest' : 'false');
+
+    if (!is_file($tmp) && is_file($dest)) {
         return;
     }
 
     if (!uploads_temp_is_trusted($tmp)) {
+        $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, ['step=temp_not_trusted']));
+        uploads_log_error($detail);
         throw new RuntimeException(
-            'Upload temporary file is missing. Try again, use a smaller image, or check PHP upload_tmp_dir.'
+            'Upload temporary file is missing. Try again, use a smaller image, or check PHP upload_tmp_dir. ' . $detail
         );
     }
 
-    if (@copy($tmp, $dest) && is_file($dest) && filesize($dest) > 0) {
-        @unlink($tmp);
-        return;
+    if (@copy($tmp, $dest)) {
+        clearstatcache(true, $dest);
+        if (is_file($dest) && filesize($dest) > 0) {
+            @unlink($tmp);
+            return;
+        }
     }
+    $steps[] = 'copy=false_or_empty';
 
-    if (@rename($tmp, $dest) && is_file($dest) && filesize($dest) > 0) {
-        return;
+    if (@rename($tmp, $dest)) {
+        clearstatcache(true, $dest);
+        if (is_file($dest) && filesize($dest) > 0) {
+            return;
+        }
     }
+    $steps[] = 'rename=false_or_empty';
 
     $bytes = @file_get_contents($tmp);
     if ($bytes !== false && $bytes !== '' && @file_put_contents($dest, $bytes) !== false) {
-        @unlink($tmp);
-        return;
+        clearstatcache(true, $dest);
+        if (is_file($dest) && filesize($dest) > 0) {
+            @unlink($tmp);
+            return;
+        }
     }
+    $steps[] = 'file_put_contents=false_or_empty';
 
     $in = @fopen($tmp, 'rb');
     if ($in === false) {
+        $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, ['step=fopen_tmp_failed']));
+        uploads_log_error($detail);
         throw new RuntimeException(
-            'Could not read the uploaded file from temp storage. Check PHP upload_tmp_dir ('
-            . (ini_get('upload_tmp_dir') ?: 'system default') . ').'
+            'Could not read the uploaded file from temp storage. Check PHP upload_tmp_dir. ' . $detail
         );
     }
 
     $out = @fopen($dest, 'wb');
     if ($out === false) {
         fclose($in);
+        $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, ['step=fopen_dest_failed']));
+        uploads_log_error($detail);
         throw new RuntimeException(
-            'Could not write to assets/uploads/items. Fix folder permissions for the web server user.'
-            . uploads_store_failure_detail($tmp, $dest)
+            'Could not write to assets/uploads/items. Fix folder permissions for the web server user. ' . $detail
         );
     }
 
     $copied = stream_copy_to_stream($in, $out);
     fclose($in);
     fclose($out);
+    clearstatcache(true, $dest);
 
-    if ($copied === false || !is_file($dest) || filesize($dest) <= 0) {
-        @unlink($dest);
-        throw new RuntimeException(
-            'Could not save uploaded image.'
-            . uploads_store_failure_detail($tmp, $dest)
-        );
+    if ($copied !== false && $copied > 0 && is_file($dest)) {
+        @unlink($tmp);
+        return;
     }
 
-    @unlink($tmp);
+    @unlink($dest);
+    $detail = uploads_store_failure_detail($tmp, $dest, array_merge($steps, [
+        'step=stream_copy_failed',
+        'copied=' . ($copied === false ? 'false' : (string) $copied),
+    ]));
+    uploads_log_error($detail);
+    throw new RuntimeException('Could not save uploaded image. ' . $detail);
 }
 
 /**
@@ -367,7 +425,17 @@ function uploads_save_image(array $file): ?string
     }
 
     if ($error !== UPLOAD_ERR_OK) {
-        throw new RuntimeException('Image upload failed (error code ' . $error . ').');
+        $labels = [
+            UPLOAD_ERR_INI_SIZE => 'file exceeds upload_max_filesize',
+            UPLOAD_ERR_FORM_SIZE => 'file exceeds MAX_FILE_SIZE in form',
+            UPLOAD_ERR_PARTIAL => 'file was only partially uploaded',
+            UPLOAD_ERR_NO_FILE => 'no file was uploaded',
+            UPLOAD_ERR_NO_TMP_DIR => 'missing temp folder on server',
+            UPLOAD_ERR_CANT_WRITE => 'failed to write to disk',
+            UPLOAD_ERR_EXTENSION => 'blocked by a PHP extension',
+        ];
+        $label = $labels[$error] ?? 'unknown error';
+        throw new RuntimeException('Image upload failed: ' . $label . ' (code ' . $error . ').');
     }
 
     $size = (int) ($file['size'] ?? 0);
@@ -389,7 +457,18 @@ function uploads_save_image(array $file): ?string
     $dest = $dir . '/' . $name;
     $tmp = (string) ($file['tmp_name'] ?? '');
 
-    uploads_store_temp_file($tmp, $dest);
+    uploads_log_error(
+        'save attempt name=' . ($file['name'] ?? '')
+        . ' ext=' . $extension
+        . ' tmp=' . $tmp
+        . ' size=' . ($file['size'] ?? 0)
+    );
+
+    try {
+        uploads_store_temp_file($tmp, $dest);
+    } catch (RuntimeException $e) {
+        throw $e;
+    }
 
     return 'items/' . $name;
 }
