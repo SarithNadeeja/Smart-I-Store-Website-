@@ -54,13 +54,66 @@ function uploads_assert_post_accepted(): void
     }
 }
 
+function uploads_base_dir(): string
+{
+    if (defined('UPLOADS_BASE_PATH') && UPLOADS_BASE_PATH !== '') {
+        return rtrim(str_replace('\\', '/', (string) UPLOADS_BASE_PATH), '/');
+    }
+
+    return str_replace('\\', '/', dirname(__DIR__) . '/assets/uploads');
+}
+
 function uploads_dir(): string
 {
-    $dir = dirname(__DIR__) . '/assets/uploads/items';
-    if (!is_dir($dir)) {
-        mkdir($dir, 0755, true);
+    $base = uploads_base_dir();
+    $dir = $base . '/items';
+
+    if (is_dir($dir)) {
+        if (!is_writable($dir)) {
+            throw new RuntimeException(
+                'Upload folder is not writable (assets/uploads/items). '
+                . 'Allow the web server user to write to this folder.'
+            );
+        }
+
+        return $dir;
     }
+
+    if (is_link($base) && !is_dir($base)) {
+        throw new RuntimeException(
+            'Upload storage link is broken (assets/uploads). '
+            . 'Fix the symlink or set UPLOADS_BASE_PATH in includes/config.local.php.'
+        );
+    }
+
+    if (!@mkdir($dir, 0755, true) && !is_dir($dir)) {
+        throw new RuntimeException(
+            'Upload folder could not be created (assets/uploads/items). '
+            . 'Create it manually and make it writable by the web server.'
+        );
+    }
+
+    if (!is_writable($dir)) {
+        throw new RuntimeException(
+            'Upload folder is not writable (assets/uploads/items). '
+            . 'Allow the web server user to write to this folder.'
+        );
+    }
+
     return $dir;
+}
+
+function uploads_move_failed_message(string $dest): string
+{
+    $parent = dirname($dest);
+    if (!is_dir($parent)) {
+        return 'Upload folder is missing (assets/uploads/items). Create it and try again.';
+    }
+    if (!is_writable($parent)) {
+        return 'Upload folder is not writable. Fix permissions on assets/uploads/items.';
+    }
+
+    return 'The server could not move the uploaded file. Check folder permissions and PHP upload_tmp_dir.';
 }
 
 function uploads_save_image(array $file): ?string
@@ -105,10 +158,23 @@ function uploads_save_image(array $file): ?string
     }
 
     $name = bin2hex(random_bytes(8)) . '.' . $allowed[$mime];
-    $dest = uploads_dir() . '/' . $name;
+    $dir = uploads_dir();
+    $dest = $dir . DIRECTORY_SEPARATOR . $name;
 
-    if (!move_uploaded_file($file['tmp_name'], $dest)) {
-        throw new RuntimeException('Could not save uploaded image.');
+    $tmp = $file['tmp_name'] ?? '';
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+        throw new RuntimeException(
+            'Upload temporary file is missing. Try again, use a smaller image, or check PHP upload_tmp_dir.'
+        );
+    }
+
+    if (!move_uploaded_file($tmp, $dest)) {
+        // Some Windows/IIS and shared hosts allow copy when move_uploaded_file fails.
+        if (@copy($tmp, $dest)) {
+            @unlink($tmp);
+        } else {
+            throw new RuntimeException('Could not save uploaded image. ' . uploads_move_failed_message($dest));
+        }
     }
 
     return 'items/' . $name;
@@ -157,7 +223,7 @@ function uploads_delete_file(?string $relativePath): void
     }
 
     $relativePath = ltrim(str_replace('\\', '/', $relativePath), '/');
-    $full = dirname(__DIR__) . '/assets/uploads/' . $relativePath;
+    $full = uploads_base_dir() . '/' . $relativePath;
     if (is_file($full)) {
         @unlink($full);
     }

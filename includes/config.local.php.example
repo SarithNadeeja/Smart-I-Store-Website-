@@ -13,6 +13,10 @@
  *   define('DB_NAME', 'smartistore_db');
  *   define('DB_USER', 'smartistore_user');
  *   define('DB_PASS', 'smartistorepwd');
+ *
+ * Optional — store uploads outside the Git repo (symlink target or absolute path):
+ *   define('UPLOADS_BASE_PATH', '/var/smaristore/uploads');
  */
 
 // define('BASE_PATH', '');
+// define('UPLOADS_BASE_PATH', '/var/smaristore/uploads');
