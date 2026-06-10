@@ -616,6 +616,8 @@ function store_parse_phone_variant_from_post(array $source): ?array
     $costRaw = trim((string) ($source['phone_variant_cost'] ?? ''));
     $costPrice = $costRaw === '' ? null : max(0, (float) $costRaw);
     $stock = store_normalize_stock_status((string) ($source['phone_variant_stock'] ?? 'in_stock'));
+    $quantityRaw = trim((string) ($source['phone_variant_quantity'] ?? ''));
+    $quantity = $quantityRaw === '' ? 1 : max(0, (int) $quantityRaw);
 
     return [
         'ram' => $ram,
@@ -623,6 +625,7 @@ function store_parse_phone_variant_from_post(array $source): ?array
         'price' => $price,
         'cost_price' => $costPrice,
         'stock_status' => $stock,
+        'quantity' => $quantity,
         'sort_order' => 0,
     ];
 }

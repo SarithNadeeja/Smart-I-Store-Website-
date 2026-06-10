@@ -413,9 +413,7 @@ function pos_create_invoice(array $header, array $lines, int $staffId): int
             if (!$product) {
                 throw new RuntimeException('Product not found.');
             }
-            $qty = !empty($product['is_phone'])
-                ? 1
-                : max(1, (int) ($line['quantity'] ?? 1));
+            $qty = max(1, (int) ($line['quantity'] ?? 1));
             if ((int) $product['stock_quantity'] < $qty) {
                 throw new RuntimeException('Insufficient stock for ' . $product['name']);
             }
@@ -498,17 +496,13 @@ function pos_create_invoice(array $header, array $lines, int $staffId): int
                 'disc' => $pl['discount'],
                 'lt' => $pl['line_total'],
             ]);
-            $soldPhone = $pdo->prepare('SELECT is_phone FROM items WHERE id = :id');
-            $soldPhone->execute(['id' => $pl['product_id']]);
-            $isSoldPhone = (bool) $soldPhone->fetchColumn();
-            if ($isSoldPhone) {
-                $pdo->prepare(
-                    "UPDATE items SET stock_quantity = 0, stock_status = 'out_of_stock', is_active = FALSE WHERE id = :id"
-                )->execute(['id' => $pl['product_id']]);
-            } else {
-                $pdo->prepare('UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id')
-                    ->execute(['q' => $pl['quantity'], 'id' => $pl['product_id']]);
-            }
+            $pdo->prepare('UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id')
+                ->execute(['q' => $pl['quantity'], 'id' => $pl['product_id']]);
+            // Phone listings represent physical units: hide the listing once the last unit sells.
+            $pdo->prepare(
+                "UPDATE items SET stock_status = 'out_of_stock', is_active = FALSE
+                 WHERE id = :id AND is_phone = TRUE AND stock_quantity <= 0"
+            )->execute(['id' => $pl['product_id']]);
         }
 
         if ($paid > 0) {
@@ -639,8 +633,8 @@ function pos_create_return(int $invoiceItemId, int $qty, string $reason, int $st
             ->execute(['q' => $qty, 'id' => $invoiceItemId]);
         if ($line['product_id']) {
             $pdo->prepare(
-                "UPDATE items SET stock_quantity = 1, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
-            )->execute(['id' => $line['product_id']]);
+                "UPDATE items SET stock_quantity = stock_quantity + :q, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
+            )->execute(['q' => $qty, 'id' => $line['product_id']]);
         }
         $pdo->commit();
         pos_audit($staffId, 'return_created', 'return', $returnId, $line['product_name_snapshot']);
@@ -1016,8 +1010,8 @@ function pos_cancel_invoice(int $id, int $staffId, bool $isManager): void
             $restock = (int) $item['quantity'] - (int) $item['returned_quantity'];
             if ($restock > 0 && $item['product_id']) {
                 $pdo->prepare(
-                    "UPDATE items SET stock_quantity = 1, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
-                )->execute(['id' => $item['product_id']]);
+                    "UPDATE items SET stock_quantity = stock_quantity + :q, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
+                )->execute(['q' => $restock, 'id' => $item['product_id']]);
             }
         }
         $pdo->prepare("UPDATE pos_invoices SET status = 'cancelled' WHERE id = :id")->execute(['id' => $id]);

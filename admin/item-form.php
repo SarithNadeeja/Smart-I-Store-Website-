@@ -207,8 +207,8 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         </div>
 
         <div class="admin-phone-extras" id="phone-variants-section"<?php echo $initialIsPhone ? '' : ' hidden'; ?>>
-            <h3 class="admin-phone-extras__title">Phone / tablet — this unit</h3>
-            <p class="admin-field-note">Add one listing per physical phone. Same brand and model with different RAM/ROM appear as storage options on the shop. Create another item for each extra unit.</p>
+            <h3 class="admin-phone-extras__title">Phone / tablet — this variant</h3>
+            <p class="admin-field-note">Same brand and model with different RAM/ROM appear as storage options on the shop. Use Quantity when you have several identical phones of this variant.</p>
 
             <div class="admin-field-row admin-phone-variant-fields">
                 <div class="admin-field">
@@ -234,6 +234,12 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                            value="<?php echo htmlspecialchars((string) ($storageVariant['cost_price'] ?? 0)); ?>"
                            placeholder="What you paid">
                     <p class="admin-field-note">Used for POS profit tracking. Never shown to customers.</p>
+                </div>
+                <div class="admin-field">
+                    <label for="phone_variant_quantity">Quantity</label>
+                    <input type="number" id="phone_variant_quantity" name="phone_variant_quantity" min="0" step="1"
+                           value="<?php echo $item ? max(0, (int) ($item['stock_quantity'] ?? 1)) : 1; ?>">
+                    <p class="admin-field-note">How many identical phones of this variant are in stock.</p>
                 </div>
                 <div class="admin-field">
                     <label for="phone_variant_stock">Stock</label>
@@ -266,7 +272,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
                 <label for="stock_quantity">Quantity in stock</label>
                 <input type="number" id="stock_quantity" name="stock_quantity" min="0" step="1"
                        value="<?php echo (int) ($item['stock_quantity'] ?? 0); ?>" required>
-                <p class="admin-field-note">For accessories and other items. Phones are always one unit per listing.</p>
+                <p class="admin-field-note">For accessories and other items. Phone quantity is set inside the variant section above.</p>
             </div>
             <div class="admin-field" id="item-cost-field">
                 <label for="cost_price">Purchase cost (Rs.) <small>internal only</small></label>

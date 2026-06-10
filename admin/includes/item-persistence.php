@@ -119,7 +119,10 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
         $price = $synced['price'];
         $costPrice = $synced['cost_price'];
         $stockStatus = $phoneVariant['stock_status'];
-        $stockQuantity = 1;
+        $stockQuantity = max(0, (int) ($phoneVariant['quantity'] ?? 1));
+        if ($stockQuantity === 0) {
+            $stockStatus = 'out_of_stock';
+        }
         $phoneVariants = [$phoneVariant];
     } elseif ($price < 0) {
         throw new RuntimeException('Price must be zero or greater.');
