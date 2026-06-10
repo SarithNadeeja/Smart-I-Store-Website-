@@ -29,6 +29,29 @@ define('INTRO_VIDEO', 'videos/intro.webm');
 define('INTRO_TRIM_START', 2);
 
 /**
+ * Fallbacks when the PHP mbstring extension is not enabled on the server.
+ * Byte-based, which is fine for length checks and ASCII case-folding.
+ */
+if (!function_exists('mb_strlen')) {
+    function mb_strlen(string $s, ?string $encoding = null): int
+    {
+        return strlen($s);
+    }
+}
+if (!function_exists('mb_strtolower')) {
+    function mb_strtolower(string $s, ?string $encoding = null): string
+    {
+        return strtolower($s);
+    }
+}
+if (!function_exists('mb_substr')) {
+    function mb_substr(string $s, int $start, ?int $length = null, ?string $encoding = null): string
+    {
+        return $length === null ? substr($s, $start) : substr($s, $start, $length);
+    }
+}
+
+/**
  * Derive /YourFolder from DOCUMENT_ROOT vs project root (works on XAMPP and cPanel).
  */
 function smartistore_detect_base_path(): string
