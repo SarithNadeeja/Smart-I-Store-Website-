@@ -885,7 +885,10 @@ body.has-intro-overlay:not(.is-intro-complete) .hero-banner--after-intro:not(.is
 @media (max-width: 768px) {
     .hero-banner--scroll-over.hero-banner--has-mobile-slides {
         margin-top: var(--header-h);
-        height: var(--hero-desktop-banner-h);
+        height: auto;
+        aspect-ratio: 9 / 16;
+        max-height: 70vh;
+        max-height: 70svh;
         min-height: 0;
         overflow: hidden;
         background: var(--hero-banner-bg);
