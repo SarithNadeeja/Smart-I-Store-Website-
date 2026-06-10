@@ -32,7 +32,8 @@ function store_icon_options(): array
 {
     return [
         'smartphone' => 'Smartphone',
-        'headphones' => 'Headphones / Accessories',
+        'headphones' => 'Headphones',
+        'accessories' => 'Accessories',
         'watch' => 'Smart Watch',
         'tablet' => 'Tablet',
     ];
@@ -1007,7 +1008,7 @@ function store_category_is_phone(int $categoryId): bool
     if ($icon === 'smartphone' || $icon === 'tablet') {
         return true;
     }
-    if ($icon === 'headphones' || $icon === 'watch') {
+    if ($icon === 'headphones' || $icon === 'accessories' || $icon === 'watch') {
         return false;
     }
 
