@@ -26,6 +26,37 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
     $costPrice = max(0, (float) ($_POST['cost_price'] ?? 0));
     $price = (float) ($_POST['price'] ?? 0);
     $stockQuantity = max(0, (int) ($_POST['stock_quantity'] ?? 0));
+
+    // Trade fields (client's Excel sheet). Forms that don't post them keep existing values.
+    $productCode = array_key_exists('product_code', $_POST)
+        ? trim((string) $_POST['product_code'])
+        : trim((string) ($existingItem['product_code'] ?? ''));
+    $unit = array_key_exists('unit', $_POST)
+        ? trim((string) $_POST['unit'])
+        : trim((string) ($existingItem['unit'] ?? ''));
+    $note = array_key_exists('note', $_POST)
+        ? trim((string) $_POST['note'])
+        : trim((string) ($existingItem['note'] ?? ''));
+
+    $parseOptionalPrice = static function (string $key) use ($existingItem): ?float {
+        if (array_key_exists($key, $_POST)) {
+            $raw = trim((string) $_POST[$key]);
+            return $raw === '' ? null : max(0, (float) $raw);
+        }
+        $existing = $existingItem[$key] ?? null;
+        return ($existing !== null && $existing !== '') ? (float) $existing : null;
+    };
+    $wholesalePrice = $parseOptionalPrice('wholesale_price');
+    $minPrice = $parseOptionalPrice('min_price');
+
+    $reorderLevel = array_key_exists('reorder_level', $_POST)
+        ? max(0, (int) $_POST['reorder_level'])
+        : (int) ($existingItem['reorder_level'] ?? 5);
+
+    if (mb_strlen($productCode) > 64) {
+        throw new RuntimeException('Product code is too long (max 64 characters).');
+    }
+
     $preownedCondition = '';
     $batteryHealth = null;
     $isPreowned = false;
@@ -159,7 +190,9 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
             'UPDATE items SET category_id = :cid, brand_id = :bid, model_id = :mid, name = :n, price = :p,
              sale_price = :sp, tag = :t, color = :col, is_phone = :ip, is_featured = :if, main_image = :img,
              is_active = :a, sort_order = :s, stock_status = :st, stock_quantity = :qty, cost_price = :cost,
-             is_preowned = :ipo, preowned_condition = :pcond, battery_health = :bat
+             is_preowned = :ipo, preowned_condition = :pcond, battery_health = :bat,
+             product_code = :pcode, unit = :unit, wholesale_price = :wp, min_price = :mp,
+             reorder_level = :rl, note = :note
              WHERE id = :id'
         );
         $stmt->execute([
@@ -182,15 +215,22 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
             'ipo' => db_bool($isPreowned),
             'pcond' => $preownedCondition,
             'bat' => $batteryHealth,
+            'pcode' => $productCode,
+            'unit' => $unit,
+            'wp' => $wholesalePrice,
+            'mp' => $minPrice,
+            'rl' => $reorderLevel,
+            'note' => $note,
             'id' => $id,
         ]);
     } else {
         $stmt = $pdo->prepare(
             'INSERT INTO items (category_id, brand_id, model_id, name, price, sale_price, tag, color, is_phone,
              is_featured, main_image, is_active, sort_order, stock_status, stock_quantity, cost_price,
-             is_preowned, preowned_condition, battery_health)
+             is_preowned, preowned_condition, battery_health,
+             product_code, unit, wholesale_price, min_price, reorder_level, note)
              VALUES (:cid, :bid, :mid, :n, :p, :sp, :t, :col, :ip, :if, :img, :a, :s, :st, :qty, :cost,
-             :ipo, :pcond, :bat)
+             :ipo, :pcond, :bat, :pcode, :unit, :wp, :mp, :rl, :note)
              RETURNING id'
         );
         $stmt->execute([
@@ -213,6 +253,12 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
             'ipo' => db_bool($isPreowned),
             'pcond' => $preownedCondition,
             'bat' => $batteryHealth,
+            'pcode' => $productCode,
+            'unit' => $unit,
+            'wp' => $wholesalePrice,
+            'mp' => $minPrice,
+            'rl' => $reorderLevel,
+            'note' => $note,
         ]);
         $id = (int) $stmt->fetchColumn();
     }

@@ -85,6 +85,7 @@ function pos_search_products(string $q, int $limit = 20): array
     $q = trim($q);
     $sql = "
         SELECT i.id, i.name, i.price, i.cost_price, i.stock_quantity, i.is_phone,
+               i.product_code,
                c.title AS category_name, b.name AS brand_name
         FROM items i
         LEFT JOIN categories c ON c.id = i.category_id
@@ -93,7 +94,7 @@ function pos_search_products(string $q, int $limit = 20): array
     ";
     $params = [];
     if ($q !== '') {
-        $sql .= ' AND (i.name ILIKE :q OR b.name ILIKE :q OR c.title ILIKE :q)';
+        $sql .= ' AND (i.name ILIKE :q OR i.product_code ILIKE :q OR b.name ILIKE :q OR c.title ILIKE :q)';
         $params['q'] = '%' . $q . '%';
     }
     $sql .= ' ORDER BY i.name ASC LIMIT :lim';
@@ -946,7 +947,8 @@ function pos_dashboard_stats(): array
         "SELECT i.name, COALESCE(NULLIF(c.description, ''), c.title) AS category_name,
                 i.stock_quantity
          FROM items i LEFT JOIN categories c ON c.id = i.category_id
-         WHERE i.is_active = TRUE AND i.is_phone = FALSE AND i.stock_quantity <= 5
+         WHERE i.is_active = TRUE AND i.is_phone = FALSE
+           AND i.stock_quantity <= GREATEST(COALESCE(i.reorder_level, 5), 0)
          ORDER BY i.stock_quantity ASC LIMIT 10"
     )->fetchAll();
     $recentInvoices = $pdo->query(

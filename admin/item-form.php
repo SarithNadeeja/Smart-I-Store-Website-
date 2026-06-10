@@ -167,6 +167,45 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($item['name'] ?? ''); ?>" required>
         </div>
 
+        <div class="admin-phone-extras">
+            <h3 class="admin-phone-extras__title">Trade details <small>(internal — never shown to customers)</small></h3>
+            <div class="admin-field-row">
+                <div class="admin-field">
+                    <label for="product_code">Product code</label>
+                    <input type="text" id="product_code" name="product_code" maxlength="64"
+                           value="<?php echo htmlspecialchars($item['product_code'] ?? ''); ?>" placeholder="e.g. CHL 40w">
+                </div>
+                <div class="admin-field">
+                    <label for="unit">Unit</label>
+                    <input type="text" id="unit" name="unit" maxlength="32"
+                           value="<?php echo htmlspecialchars($item['unit'] ?? ''); ?>" placeholder="e.g. 2 PCS">
+                </div>
+                <div class="admin-field">
+                    <label for="reorder_level">Stock alert</label>
+                    <input type="number" id="reorder_level" name="reorder_level" min="0" step="1"
+                           value="<?php echo (int) ($item['reorder_level'] ?? 5); ?>">
+                    <p class="admin-field-note">POS warns when stock falls to this level.</p>
+                </div>
+            </div>
+            <div class="admin-field-row">
+                <div class="admin-field">
+                    <label for="wholesale_price">Wholesale price (Rs.)</label>
+                    <input type="number" id="wholesale_price" name="wholesale_price" min="0" step="0.01"
+                           value="<?php echo isset($item['wholesale_price']) && $item['wholesale_price'] !== null && $item['wholesale_price'] !== '' ? htmlspecialchars((string) $item['wholesale_price']) : ''; ?>">
+                </div>
+                <div class="admin-field">
+                    <label for="min_price">Min price (Rs.)</label>
+                    <input type="number" id="min_price" name="min_price" min="0" step="0.01"
+                           value="<?php echo isset($item['min_price']) && $item['min_price'] !== null && $item['min_price'] !== '' ? htmlspecialchars((string) $item['min_price']) : ''; ?>">
+                    <p class="admin-field-note">Lowest allowed selling price.</p>
+                </div>
+            </div>
+            <div class="admin-field">
+                <label for="note">Note</label>
+                <textarea id="note" name="note" rows="2" placeholder="Internal note about this item"><?php echo htmlspecialchars($item['note'] ?? ''); ?></textarea>
+            </div>
+        </div>
+
         <div class="admin-phone-extras" id="phone-variants-section"<?php echo $initialIsPhone ? '' : ' hidden'; ?>>
             <h3 class="admin-phone-extras__title">Phone / tablet — this unit</h3>
             <p class="admin-field-note">Add one listing per physical phone. Same brand and model with different RAM/ROM appear as storage options on the shop. Create another item for each extra unit.</p>

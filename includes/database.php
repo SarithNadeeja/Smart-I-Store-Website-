@@ -332,6 +332,12 @@ function db_migrate_pos_cloud(PDO $pdo): void
     $itemCols = [
         'cost_price' => 'NUMERIC(12, 2) NOT NULL DEFAULT 0',
         'reorder_level' => 'INT NOT NULL DEFAULT 5',
+        // Trade fields from the client's manual Excel sheet
+        'product_code' => "VARCHAR(64) NOT NULL DEFAULT ''",
+        'unit' => "VARCHAR(32) NOT NULL DEFAULT ''",
+        'wholesale_price' => 'NUMERIC(12, 2) NULL',
+        'min_price' => 'NUMERIC(12, 2) NULL',
+        'note' => "TEXT NOT NULL DEFAULT ''",
     ];
     foreach ($itemCols as $col => $def) {
         $exists = $pdo->query(
@@ -342,6 +348,7 @@ function db_migrate_pos_cloud(PDO $pdo): void
             $pdo->exec("ALTER TABLE items ADD COLUMN {$col} {$def}");
         }
     }
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_items_product_code ON items(product_code)');
 
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS pos_staff (

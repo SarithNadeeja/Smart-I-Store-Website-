@@ -53,7 +53,7 @@ $where = ['COALESCE(i.is_preowned, FALSE) = FALSE'];
 $params = [];
 
 if ($filters['q'] !== '') {
-    $where[] = '(i.name ILIKE :q OR b.name ILIKE :q OR m.name ILIKE :q
+    $where[] = '(i.name ILIKE :q OR i.product_code ILIKE :q OR b.name ILIKE :q OR m.name ILIKE :q
         OR c.title ILIKE :q OR c.description ILIKE :q)';
     $params['q'] = '%' . $filters['q'] . '%';
 }
@@ -219,7 +219,12 @@ admin_render_header('Items', 'items');
                         <span class="admin-thumb admin-thumb--empty">—</span>
                         <?php endif; ?>
                     </td>
-                    <td><?php echo htmlspecialchars($item['name']); ?></td>
+                    <td>
+                        <?php echo htmlspecialchars($item['name']); ?>
+                        <?php if (!empty($item['product_code'])): ?>
+                        <br><small class="admin-muted"><?php echo htmlspecialchars($item['product_code']); ?></small>
+                        <?php endif; ?>
+                    </td>
                     <td><?php echo store_category_is_phone((int) ($item['category_id'] ?? 0)) ? 'Phone' : 'Other'; ?></td>
                     <td><?php echo htmlspecialchars($item['brand_name'] ?? '—'); ?></td>
                     <td><?php echo htmlspecialchars($item['model_name'] ?? '—'); ?></td>
