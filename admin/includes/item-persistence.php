@@ -128,6 +128,10 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
         throw new RuntimeException('Price must be zero or greater.');
     }
 
+    if (!$isPhone && $stockQuantity <= 0 && $stockStatus === 'in_stock') {
+        $stockStatus = 'out_of_stock';
+    }
+
     $salePriceDb = null;
     if ($manageOffer) {
         $salePriceRaw = trim($_POST['sale_price'] ?? $_POST['offer_price'] ?? '');
@@ -303,6 +307,7 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
     }
 
     store_replace_item_phone_details($pdo, $id, $isPhone, $phoneVariants, $phoneSpecs);
+    store_sync_item_stock($pdo, $id);
 
     return $id;
 }

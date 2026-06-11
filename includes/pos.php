@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/database.php';
+require_once __DIR__ . '/store.php';
 
 function pos_get_items_for_select(): array
 {
@@ -225,10 +226,7 @@ function pos_add_ledger_entry(
         $entryId = (int) $stmt->fetchColumn();
 
         if ($reduceStock && $direction === 'income' && $incomeKind === 'sale' && $itemId) {
-            $upd = $pdo->prepare(
-                'UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id'
-            );
-            $upd->execute(['q' => $saleQuantity, 'id' => $itemId]);
+            store_deduct_item_stock($pdo, $itemId, $saleQuantity);
         }
 
         $pdo->commit();

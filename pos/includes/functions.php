@@ -496,16 +496,7 @@ function pos_create_invoice(array $header, array $lines, int $staffId): int
                 'disc' => $pl['discount'],
                 'lt' => $pl['line_total'],
             ]);
-            $pdo->prepare('UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id')
-                ->execute(['q' => $pl['quantity'], 'id' => $pl['product_id']]);
-            // Last unit sold: show the item as out of stock on the website.
-            // Phone listings represent physical units, so they are hidden entirely.
-            $pdo->prepare(
-                "UPDATE items
-                 SET stock_status = 'out_of_stock',
-                     is_active = CASE WHEN is_phone THEN FALSE ELSE is_active END
-                 WHERE id = :id AND stock_quantity <= 0"
-            )->execute(['id' => $pl['product_id']]);
+            store_deduct_item_stock($pdo, (int) $pl['product_id'], (int) $pl['quantity']);
         }
 
         if ($paid > 0) {
@@ -675,9 +666,7 @@ function pos_create_return(int $invoiceItemId, int $qty, string $reason, int $st
         $pdo->prepare('UPDATE pos_invoice_items SET returned_quantity = returned_quantity + :q WHERE id = :id')
             ->execute(['q' => $qty, 'id' => $invoiceItemId]);
         if ($line['product_id']) {
-            $pdo->prepare(
-                "UPDATE items SET stock_quantity = stock_quantity + :q, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
-            )->execute(['q' => $qty, 'id' => $line['product_id']]);
+            store_restock_item($pdo, (int) $line['product_id'], $qty);
         }
         $pdo->commit();
         pos_audit($staffId, 'return_created', 'return', $returnId, $line['product_name_snapshot']);
@@ -1052,9 +1041,7 @@ function pos_cancel_invoice(int $id, int $staffId, bool $isManager): void
         foreach ($inv['items'] as $item) {
             $restock = (int) $item['quantity'] - (int) $item['returned_quantity'];
             if ($restock > 0 && $item['product_id']) {
-                $pdo->prepare(
-                    "UPDATE items SET stock_quantity = stock_quantity + :q, stock_status = 'in_stock', is_active = TRUE WHERE id = :id"
-                )->execute(['q' => $restock, 'id' => $item['product_id']]);
+                store_restock_item($pdo, (int) $item['product_id'], $restock);
             }
         }
         $pdo->prepare("UPDATE pos_invoices SET status = 'cancelled' WHERE id = :id")->execute(['id' => $id]);

@@ -309,7 +309,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
             <img class="admin-preview" src="<?php echo htmlspecialchars(upload_url($item['main_image'])); ?>" alt="">
             <?php endif; ?>
             <input type="file" id="main_image" name="main_image" accept="image/*" data-upload-max-mb="15">
-            <p class="admin-field-note">Max 15 MB per image. Server allows up to <?php echo htmlspecialchars(ini_get('upload_max_filesize') ?: '?'); ?> per file, <?php echo htmlspecialchars(ini_get('post_max_size') ?: '?'); ?> per form.</p>
+            <p class="admin-field-note">JPG, PNG, or HEIC uploads are saved as WebP. Max 15 MB per image. Server allows up to <?php echo htmlspecialchars(ini_get('upload_max_filesize') ?: '?'); ?> per file, <?php echo htmlspecialchars(ini_get('post_max_size') ?: '?'); ?> per form.</p>
         </div>
 
         <div class="admin-phone-extras">

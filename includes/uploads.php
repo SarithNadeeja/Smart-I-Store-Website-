@@ -1,7 +1,10 @@
 <?php
 
 /** Bump when upload handler changes — visible in admin errors. */
-define('UPLOADS_HANDLER_VERSION', '20250609c');
+define('UPLOADS_HANDLER_VERSION', '20250611a');
+
+/** WebP output quality (0–100) for converted admin uploads */
+define('UPLOADS_WEBP_QUALITY', 82);
 
 /** Per-file limit enforced in the app (keep below server upload_max_filesize) */
 define('UPLOAD_MAX_FILE_BYTES', 15 * 1024 * 1024);
@@ -217,6 +220,9 @@ function uploads_allowed_image_types(): array
         'image/x-png' => 'png',
         'image/webp' => 'webp',
         'image/gif' => 'gif',
+        'image/heic' => 'heic',
+        'image/heif' => 'heif',
+        'image/heic-sequence' => 'heic',
     ];
 }
 
@@ -249,13 +255,18 @@ function uploads_resolve_image_extension(array $file): string
         'png' => 'png',
         'webp' => 'webp',
         'gif' => 'gif',
+        'heic' => 'heic',
+        'heif' => 'heif',
     ];
     if ($imageInfo !== false && isset($byExt[$ext])) {
         return $byExt[$ext];
     }
+    if (isset($byExt[$ext])) {
+        return $byExt[$ext];
+    }
 
     $label = $mime !== '' ? $mime : 'unknown type';
-    throw new RuntimeException('Only JPG, PNG, WebP, and GIF images are allowed (received ' . $label . ').');
+    throw new RuntimeException('Only JPG, PNG, WebP, GIF, and HEIC images are allowed (received ' . $label . ').');
 }
 
 function uploads_temp_is_trusted(string $tmp): bool
@@ -363,6 +374,80 @@ function uploads_store_failure_detail(string $tmp, string $dest, array $steps = 
     }
 
     return implode(' | ', $parts);
+}
+
+/**
+ * Convert a stored image (PNG, JPG, JPEG, HEIC, GIF) to WebP. Already-WebP files are kept as-is.
+ */
+function uploads_convert_to_webp(string $sourcePath): string
+{
+    if (!is_file($sourcePath)) {
+        throw new RuntimeException('Uploaded image file is missing.');
+    }
+
+    $ext = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION));
+    if ($ext === 'webp') {
+        return $sourcePath;
+    }
+
+    $destPath = preg_replace('/\.[^.]+$/', '', $sourcePath) . '.webp';
+    if (is_file($destPath)) {
+        @unlink($destPath);
+    }
+
+    if (class_exists('Imagick')) {
+        try {
+            $image = new Imagick($sourcePath);
+            $image->setIteratorIndex(0);
+            $image->setImageFormat('webp');
+            $image->setImageCompressionQuality(UPLOADS_WEBP_QUALITY);
+            $image->writeImage($destPath);
+            $image->clear();
+            $image->destroy();
+            clearstatcache(true, $destPath);
+            if (is_file($destPath) && filesize($destPath) > 0) {
+                if ($sourcePath !== $destPath) {
+                    @unlink($sourcePath);
+                }
+                return $destPath;
+            }
+        } catch (Throwable $e) {
+            uploads_log_error('Imagick WebP conversion failed: ' . $e->getMessage());
+        }
+    }
+
+    if (function_exists('imagewebp')) {
+        $imageInfo = @getimagesize($sourcePath);
+        $mime = is_array($imageInfo) ? (string) ($imageInfo['mime'] ?? '') : '';
+        $resource = match ($mime) {
+            'image/jpeg', 'image/pjpeg' => @imagecreatefromjpeg($sourcePath),
+            'image/png', 'image/x-png' => @imagecreatefrompng($sourcePath),
+            'image/gif' => @imagecreatefromgif($sourcePath),
+            'image/webp' => @imagecreatefromwebp($sourcePath),
+            default => false,
+        };
+
+        if ($resource !== false) {
+            if (in_array($mime, ['image/png', 'image/x-png', 'image/gif'], true)) {
+                imagealphablending($resource, true);
+                imagesavealpha($resource, true);
+            }
+            $saved = @imagewebp($resource, $destPath, UPLOADS_WEBP_QUALITY);
+            imagedestroy($resource);
+            clearstatcache(true, $destPath);
+            if ($saved && is_file($destPath) && filesize($destPath) > 0) {
+                if ($sourcePath !== $destPath) {
+                    @unlink($sourcePath);
+                }
+                return $destPath;
+            }
+        }
+    }
+
+    uploads_fail(
+        'Could not convert image to WebP.',
+        'Enable PHP GD with WebP support, or install Imagick (required for HEIC). Original format: ' . $ext . '.'
+    );
 }
 
 function uploads_store_temp_file(string $tmp, string $dest): void
@@ -531,7 +616,9 @@ function uploads_save_image(array $file): ?string
 
     uploads_store_temp_file($tmp, $dest);
 
-    return 'items/' . $name;
+    $finalDest = uploads_convert_to_webp($dest);
+
+    return 'items/' . basename($finalDest);
 }
 
 /**

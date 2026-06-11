@@ -28,6 +28,68 @@ function store_normalize_stock_status(string $status): string
     return array_key_exists($status, $statuses) ? $status : 'in_stock';
 }
 
+/**
+ * Stock status shown on the website — quantity zero means out of stock unless pre-order.
+ */
+function store_effective_stock_status(string $status, int $quantity): string
+{
+    $status = store_normalize_stock_status($status);
+    if ($quantity <= 0 && $status !== 'pre_order') {
+        return 'out_of_stock';
+    }
+
+    return $status;
+}
+
+/**
+ * Keep items.stock_status (and phone variant rows) aligned with stock_quantity after sales or admin edits.
+ */
+function store_sync_item_stock(PDO $pdo, int $itemId): void
+{
+    if ($itemId <= 0) {
+        return;
+    }
+
+    $pdo->prepare(
+        "UPDATE items SET stock_status = CASE
+            WHEN stock_quantity <= 0 AND stock_status <> 'pre_order' THEN 'out_of_stock'
+            WHEN stock_quantity > 0 AND stock_status = 'out_of_stock' THEN 'in_stock'
+            ELSE stock_status
+         END
+         WHERE id = :id"
+    )->execute(['id' => $itemId]);
+
+    $pdo->prepare(
+        "UPDATE item_storage_variants SET stock_status = i.stock_status
+         FROM items i
+         WHERE item_storage_variants.item_id = i.id AND i.id = :id"
+    )->execute(['id' => $itemId]);
+}
+
+function store_deduct_item_stock(PDO $pdo, int $itemId, int $quantity): void
+{
+    if ($itemId <= 0 || $quantity <= 0) {
+        return;
+    }
+
+    $pdo->prepare(
+        'UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id'
+    )->execute(['q' => $quantity, 'id' => $itemId]);
+    store_sync_item_stock($pdo, $itemId);
+}
+
+function store_restock_item(PDO $pdo, int $itemId, int $quantity): void
+{
+    if ($itemId <= 0 || $quantity <= 0) {
+        return;
+    }
+
+    $pdo->prepare(
+        'UPDATE items SET stock_quantity = stock_quantity + :q WHERE id = :id'
+    )->execute(['q' => $quantity, 'id' => $itemId]);
+    store_sync_item_stock($pdo, $itemId);
+}
+
 function store_icon_options(): array
 {
     return [
@@ -99,6 +161,10 @@ function store_map_item_row(array $row): array
         $meta = $meta !== '' ? $brand . ' · ' . $model : $model;
     }
 
+    $stockQty = max(0, (int) ($row['stock_quantity'] ?? 0));
+    $storedStatus = store_normalize_stock_status($row['stock_status'] ?? 'in_stock');
+    $effectiveStatus = store_effective_stock_status($storedStatus, $stockQty);
+
     $item = [
         'id' => (int) $row['id'],
         'name' => $row['name'],
@@ -112,9 +178,9 @@ function store_map_item_row(array $row): array
         'color' => $row['color'] ?? '#333333',
         'category_id' => isset($row['category_id']) ? (int) $row['category_id'] : null,
         'is_phone' => !empty($row['is_phone']),
-        'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
-        'stock_label' => store_stock_label(store_normalize_stock_status($row['stock_status'] ?? 'in_stock')),
-        'stock_quantity' => max(0, (int) ($row['stock_quantity'] ?? 0)),
+        'stock_status' => $effectiveStatus,
+        'stock_label' => store_stock_label($effectiveStatus),
+        'stock_quantity' => $stockQty,
         'tag' => $row['tag'] ?? '',
         'is_preowned' => !empty($row['is_preowned']),
         'preowned_condition' => trim((string) ($row['preowned_condition'] ?? '')),
@@ -348,24 +414,35 @@ function store_get_item_storage_variants(int $itemId): array
          ORDER BY sort_order ASC, id ASC'
     );
     $stmt->execute(['id' => $itemId]);
+    $rows = $stmt->fetchAll();
 
-    return array_map(static function (array $row): array {
+    $qtyStmt = db()->prepare('SELECT stock_quantity, stock_status FROM items WHERE id = :id');
+    $qtyStmt->execute(['id' => $itemId]);
+    $itemRow = $qtyStmt->fetch() ?: [];
+    $itemQty = max(0, (int) ($itemRow['stock_quantity'] ?? 0));
+    $itemStoredStatus = store_normalize_stock_status($itemRow['stock_status'] ?? 'in_stock');
+
+    return array_map(static function (array $row) use ($itemQty, $itemStoredStatus): array {
         $price = $row['price'];
+        $effectiveStatus = store_effective_stock_status(
+            $row['stock_status'] ?? $itemStoredStatus,
+            $itemQty
+        );
         return [
             'id' => (int) $row['id'],
             'ram' => trim($row['ram'] ?? ''),
             'rom' => trim($row['rom'] ?? ''),
             'price' => $price !== null && $price !== '' ? (float) $price : null,
             'cost_price' => (float) ($row['cost_price'] ?? 0),
-            'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
-            'stock_label' => store_stock_label(store_normalize_stock_status($row['stock_status'] ?? 'in_stock')),
+            'stock_status' => $effectiveStatus,
+            'stock_label' => store_stock_label($effectiveStatus),
             'sort_order' => (int) $row['sort_order'],
             'label' => store_format_storage_variant_label(
                 trim($row['ram'] ?? ''),
                 trim($row['rom'] ?? '')
             ),
         ];
-    }, $stmt->fetchAll());
+    }, $rows);
 }
 
 function store_get_item_system_specs(int $itemId): array
@@ -457,7 +534,8 @@ function store_get_phone_model_variants(int $itemId): array
     }
 
     $stmt = db()->prepare(
-        'SELECT i.id AS item_id, i.price, i.sale_price, i.cost_price, i.stock_status, i.sort_order, i.tag,
+        'SELECT i.id AS item_id, i.price, i.sale_price, i.cost_price, i.stock_status, i.stock_quantity,
+                i.sort_order, i.tag,
                 sv.ram, sv.rom, sv.price AS variant_price, sv.cost_price AS variant_cost
          FROM items i
          LEFT JOIN item_storage_variants sv ON sv.item_id = i.id
@@ -484,7 +562,8 @@ function store_get_phone_model_variants(int $itemId): array
         $cost = $row['variant_cost'] !== null && $row['variant_cost'] !== ''
             ? (float) $row['variant_cost']
             : (float) ($row['cost_price'] ?? 0);
-        $stockStatus = store_normalize_stock_status($row['stock_status'] ?? 'in_stock');
+        $stockQty = max(0, (int) ($row['stock_quantity'] ?? 0));
+        $stockStatus = store_effective_stock_status($row['stock_status'] ?? 'in_stock', $stockQty);
 
         $variantRow = [
             'item_id' => $id,
@@ -495,6 +574,7 @@ function store_get_phone_model_variants(int $itemId): array
             'cost_price' => $cost,
             'stock_status' => $stockStatus,
             'stock_label' => store_stock_label($stockStatus),
+            'stock_quantity' => $stockQty,
             'sort_order' => (int) ($row['sort_order'] ?? 0),
             'label' => store_format_storage_variant_label($ram, $rom),
             'is_current' => $id === $itemId,
