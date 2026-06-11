@@ -76,11 +76,19 @@ $paymentMethods = pos_payment_methods();
             </tr>
             <?php endforeach; ?>
         </tbody>
+        <?php if ((float) $invoice['discount'] > 0): ?>
+        <tfoot>
+            <tr>
+                <td colspan="5" style="text-align: right; font-weight: 600;">Invoice discount</td>
+                <td style="font-weight: 600;">&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></td>
+            </tr>
+        </tfoot>
+        <?php endif; ?>
     </table>
 
     <div class="totals">
         <div><span>Subtotal</span><span><?php echo pos_format_money((float) $invoice['subtotal']); ?></span></div>
-        <div><span>Discount</span><span><?php echo pos_format_money((float) $invoice['discount']); ?></span></div>
+        <div><span>Discount</span><span>&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></span></div>
         <div class="grand"><span>Total</span><span><?php echo pos_format_money((float) $invoice['total']); ?></span></div>
         <div><span>Paid</span><span><?php echo pos_format_money((float) $invoice['paid_amount']); ?></span></div>
         <div><span>Balance</span><span><?php echo pos_format_money((float) $invoice['balance']); ?></span></div>

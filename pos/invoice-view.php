@@ -91,7 +91,7 @@ pos_render_header('Invoice ' . $invoice['invoice_no'], 'invoices');
         </div>
         <div class="pos-sale-totals admin-panel">
             <div><span>Subtotal</span><strong><?php echo pos_format_money((float) $invoice['subtotal']); ?></strong></div>
-            <div><span>Discount</span><strong><?php echo pos_format_money((float) $invoice['discount']); ?></strong></div>
+            <div><span>Discount</span><strong>&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></strong></div>
             <div class="pos-sale-totals__grand"><span>Total</span><strong><?php echo pos_format_money((float) $invoice['total']); ?></strong></div>
             <div><span>Paid</span><strong><?php echo pos_format_money((float) $invoice['paid_amount']); ?></strong></div>
             <div><span>Balance</span><strong><?php echo pos_format_money((float) $invoice['balance']); ?></strong></div>
@@ -145,6 +145,16 @@ pos_render_header('Invoice ' . $invoice['invoice_no'], 'invoices');
                 </tr>
                 <?php endforeach; ?>
             </tbody>
+            <?php if ((float) $invoice['discount'] > 0): ?>
+            <tfoot>
+                <tr>
+                    <td colspan="4" style="text-align: right;"><strong>Invoice discount</strong></td>
+                    <td><strong><?php echo pos_format_money((float) $invoice['discount']); ?></strong></td>
+                    <td><strong>&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></strong></td>
+                    <?php if (!$cancelled): ?><td></td><?php endif; ?>
+                </tr>
+            </tfoot>
+            <?php endif; ?>
         </table>
     </div>
 </section>

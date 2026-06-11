@@ -50,9 +50,11 @@
         }
         productResults.innerHTML = items.map(function (p) {
             var label = p.variant_label ? ' · ' + escapeHtml(p.variant_label) : '';
-            return '<button type="button" class="pos-search-item" data-id="' + p.id + '" data-name="' + escapeAttr(p.name) + '" data-price="' + p.price + '" data-is-phone="' + (p.is_phone ? '1' : '0') + '" data-stock="' + (p.stock_quantity || 0) + '">' +
+            var stock = parseInt(p.stock_quantity, 10) || 0;
+            var stockNote = stock < 1 ? ' · OUT OF STOCK' : ' · stock: ' + stock;
+            return '<button type="button" class="pos-search-item' + (stock < 1 ? ' pos-search-item--out' : '') + '" data-id="' + p.id + '" data-name="' + escapeAttr(p.name) + '" data-price="' + p.price + '" data-is-phone="' + (p.is_phone ? '1' : '0') + '" data-stock="' + stock + '">' +
                 '<strong>' + escapeHtml(p.name) + '</strong>' +
-                '<span>' + money(p.price) + label + '</span>' +
+                '<span>' + money(p.price) + label + stockNote + '</span>' +
                 '</button>';
         }).join('');
     }
@@ -90,6 +92,10 @@
     function addToCart(product) {
         var id = parseInt(product.id, 10);
         var isPhone = product.is_phone === '1' || product.is_phone === true;
+        if ((parseInt(product.stock, 10) || 0) < 1) {
+            alert('This item is out of stock. Restock it from the admin panel before selling.');
+            return;
+        }
         var idx = findCartIndex(id);
         if (idx >= 0) {
             if (cart[idx].quantity >= (parseInt(product.stock, 10) || 0)) {

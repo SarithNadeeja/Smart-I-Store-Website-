@@ -498,10 +498,13 @@ function pos_create_invoice(array $header, array $lines, int $staffId): int
             ]);
             $pdo->prepare('UPDATE items SET stock_quantity = GREATEST(0, stock_quantity - :q) WHERE id = :id')
                 ->execute(['q' => $pl['quantity'], 'id' => $pl['product_id']]);
-            // Phone listings represent physical units: hide the listing once the last unit sells.
+            // Last unit sold: show the item as out of stock on the website.
+            // Phone listings represent physical units, so they are hidden entirely.
             $pdo->prepare(
-                "UPDATE items SET stock_status = 'out_of_stock', is_active = FALSE
-                 WHERE id = :id AND is_phone = TRUE AND stock_quantity <= 0"
+                "UPDATE items
+                 SET stock_status = 'out_of_stock',
+                     is_active = CASE WHEN is_phone THEN FALSE ELSE is_active END
+                 WHERE id = :id AND stock_quantity <= 0"
             )->execute(['id' => $pl['product_id']]);
         }
 

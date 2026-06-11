@@ -115,6 +115,16 @@ html[data-admin-theme="light"] .pos-month-item--highlight {
     color: var(--admin-text-faint);
 }
 
+.pos-search-item--out {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.pos-search-item--out:hover {
+    border-color: rgba(239, 68, 68, 0.45);
+    background: rgba(239, 68, 68, 0.08);
+}
+
 .pos-sale-totals {
     display: flex;
     flex-direction: column;
