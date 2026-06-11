@@ -557,6 +557,46 @@ function pos_get_invoice(int $id): ?array
     return $inv;
 }
 
+/**
+ * Spread the invoice-level discount across the line items, proportionally to
+ * their totals (display helper — nothing is stored). Returns a map of
+ * invoice_item id => allocated discount; rounding drift goes to the last line.
+ */
+function pos_allocate_invoice_discount(array $invoice): array
+{
+    $shares = [];
+    $items = $invoice['items'] ?? [];
+    foreach ($items as $item) {
+        $shares[(int) $item['id']] = 0.0;
+    }
+
+    $discount = (float) ($invoice['discount'] ?? 0);
+    if ($discount <= 0 || !$items) {
+        return $shares;
+    }
+
+    $subtotal = 0.0;
+    foreach ($items as $item) {
+        $subtotal += (float) $item['line_total'];
+    }
+    if ($subtotal <= 0) {
+        return $shares;
+    }
+
+    $allocated = 0.0;
+    $lastId = null;
+    foreach ($items as $item) {
+        $id = (int) $item['id'];
+        $share = round($discount * (float) $item['line_total'] / $subtotal, 2);
+        $shares[$id] = $share;
+        $allocated += $share;
+        $lastId = $id;
+    }
+    $shares[$lastId] = round($shares[$lastId] + ($discount - $allocated), 2);
+
+    return $shares;
+}
+
 function pos_add_invoice_payment(int $invoiceId, float $amount, string $method, string $note, int $staffId): void
 {
     $inv = pos_get_invoice($invoiceId);

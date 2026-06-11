@@ -54,6 +54,20 @@ $paymentMethods = pos_payment_methods();
 $cancelled = $invoice['status'] === 'cancelled';
 $hasBalance = (float) $invoice['balance'] > 0 && !$cancelled;
 
+// Spread the invoice-level discount across the lines (proportionally to their
+// totals) so the Discount column shows the full discount the customer received
+// and the line totals add up to the invoice total.
+$discountShares = pos_allocate_invoice_discount($invoice);
+
+// Gross subtotal (before any discount) and combined discount, so the summary
+// matches the discounted line totals: subtotal - discount = total.
+$grossSubtotal = 0.0;
+$combinedDiscount = (float) $invoice['discount'];
+foreach ($invoice['items'] as $item) {
+    $grossSubtotal += (float) $item['unit_price'] * (int) $item['quantity'];
+    $combinedDiscount += (float) $item['discount'];
+}
+
 pos_render_header('Invoice ' . $invoice['invoice_no'], 'invoices');
 ?>
 <div class="admin-panel">
@@ -90,8 +104,8 @@ pos_render_header('Invoice ' . $invoice['invoice_no'], 'invoices');
             <?php endif; ?>
         </div>
         <div class="pos-sale-totals admin-panel">
-            <div><span>Subtotal</span><strong><?php echo pos_format_money((float) $invoice['subtotal']); ?></strong></div>
-            <div><span>Discount</span><strong>&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></strong></div>
+            <div><span>Subtotal</span><strong><?php echo pos_format_money($grossSubtotal); ?></strong></div>
+            <div><span>Discount</span><strong>&minus; <?php echo pos_format_money($combinedDiscount); ?></strong></div>
             <div class="pos-sale-totals__grand"><span>Total</span><strong><?php echo pos_format_money((float) $invoice['total']); ?></strong></div>
             <div><span>Paid</span><strong><?php echo pos_format_money((float) $invoice['paid_amount']); ?></strong></div>
             <div><span>Balance</span><strong><?php echo pos_format_money((float) $invoice['balance']); ?></strong></div>
@@ -118,14 +132,15 @@ pos_render_header('Invoice ' . $invoice['invoice_no'], 'invoices');
                 <?php foreach ($invoice['items'] as $item): ?>
                 <?php
                 $maxReturn = (int) $item['quantity'] - (int) $item['returned_quantity'];
+                $discountShare = $discountShares[(int) $item['id']] ?? 0.0;
                 ?>
                 <tr>
                     <td><?php echo htmlspecialchars($item['product_name_snapshot']); ?></td>
                     <td><?php echo pos_format_money((float) $item['unit_price']); ?></td>
                     <td><?php echo (int) $item['quantity']; ?></td>
                     <td><?php echo (int) $item['returned_quantity']; ?></td>
-                    <td><?php echo pos_format_money((float) $item['discount']); ?></td>
-                    <td><?php echo pos_format_money((float) $item['line_total']); ?></td>
+                    <td><?php echo pos_format_money((float) $item['discount'] + $discountShare); ?></td>
+                    <td><?php echo pos_format_money((float) $item['line_total'] - $discountShare); ?></td>
                     <?php if (!$cancelled): ?>
                     <td>
                         <?php if ($maxReturn > 0): ?>
@@ -145,16 +160,6 @@ pos_render_header('Invoice ' . $invoice['invoice_no'], 'invoices');
                 </tr>
                 <?php endforeach; ?>
             </tbody>
-            <?php if ((float) $invoice['discount'] > 0): ?>
-            <tfoot>
-                <tr>
-                    <td colspan="4" style="text-align: right;"><strong>Invoice discount</strong></td>
-                    <td><strong><?php echo pos_format_money((float) $invoice['discount']); ?></strong></td>
-                    <td><strong>&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></strong></td>
-                    <?php if (!$cancelled): ?><td></td><?php endif; ?>
-                </tr>
-            </tfoot>
-            <?php endif; ?>
         </table>
     </div>
 </section>

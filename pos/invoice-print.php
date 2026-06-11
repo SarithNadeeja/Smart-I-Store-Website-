@@ -13,6 +13,14 @@ if (!$invoice) {
 }
 
 $paymentMethods = pos_payment_methods();
+$discountShares = pos_allocate_invoice_discount($invoice);
+
+$grossSubtotal = 0.0;
+$combinedDiscount = (float) $invoice['discount'];
+foreach ($invoice['items'] as $item) {
+    $grossSubtotal += (float) $item['unit_price'] * (int) $item['quantity'];
+    $combinedDiscount += (float) $item['discount'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -66,29 +74,22 @@ $paymentMethods = pos_payment_methods();
         </thead>
         <tbody>
             <?php foreach ($invoice['items'] as $i => $item): ?>
+            <?php $discountShare = $discountShares[(int) $item['id']] ?? 0.0; ?>
             <tr>
                 <td><?php echo $i + 1; ?></td>
                 <td><?php echo htmlspecialchars($item['product_name_snapshot']); ?></td>
                 <td><?php echo pos_format_money((float) $item['unit_price']); ?></td>
                 <td><?php echo (int) $item['quantity']; ?></td>
-                <td><?php echo pos_format_money((float) $item['discount']); ?></td>
-                <td><?php echo pos_format_money((float) $item['line_total']); ?></td>
+                <td><?php echo pos_format_money((float) $item['discount'] + $discountShare); ?></td>
+                <td><?php echo pos_format_money((float) $item['line_total'] - $discountShare); ?></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
-        <?php if ((float) $invoice['discount'] > 0): ?>
-        <tfoot>
-            <tr>
-                <td colspan="5" style="text-align: right; font-weight: 600;">Invoice discount</td>
-                <td style="font-weight: 600;">&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></td>
-            </tr>
-        </tfoot>
-        <?php endif; ?>
     </table>
 
     <div class="totals">
-        <div><span>Subtotal</span><span><?php echo pos_format_money((float) $invoice['subtotal']); ?></span></div>
-        <div><span>Discount</span><span>&minus; <?php echo pos_format_money((float) $invoice['discount']); ?></span></div>
+        <div><span>Subtotal</span><span><?php echo pos_format_money($grossSubtotal); ?></span></div>
+        <div><span>Discount</span><span>&minus; <?php echo pos_format_money($combinedDiscount); ?></span></div>
         <div class="grand"><span>Total</span><span><?php echo pos_format_money((float) $invoice['total']); ?></span></div>
         <div><span>Paid</span><span><?php echo pos_format_money((float) $invoice['paid_amount']); ?></span></div>
         <div><span>Balance</span><span><?php echo pos_format_money((float) $invoice['balance']); ?></span></div>
