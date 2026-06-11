@@ -41,6 +41,19 @@ function store_effective_stock_status(string $status, int $quantity): string
     return $status;
 }
 
+/** Effective stock status + label for admin lists (respects stock_quantity). */
+function store_item_effective_stock(array $row): array
+{
+    $qty = max(0, (int) ($row['stock_quantity'] ?? 0));
+    $status = store_effective_stock_status($row['stock_status'] ?? 'in_stock', $qty);
+
+    return [
+        'stock_status' => $status,
+        'stock_label' => store_stock_label($status),
+        'stock_quantity' => $qty,
+    ];
+}
+
 /**
  * Keep items.stock_status (and phone variant rows) aligned with stock_quantity after sales or admin edits.
  */

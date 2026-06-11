@@ -70,8 +70,15 @@ if ($filters['model_id'] > 0) {
     $params['model_id'] = $filters['model_id'];
 }
 if ($filters['stock_status'] !== '') {
-    $where[] = 'i.stock_status = :stock_status';
-    $params['stock_status'] = store_normalize_stock_status($filters['stock_status']);
+    $normalized = store_normalize_stock_status($filters['stock_status']);
+    if ($normalized === 'out_of_stock') {
+        $where[] = "(i.stock_quantity <= 0 AND i.stock_status <> 'pre_order') OR i.stock_status = 'out_of_stock'";
+    } elseif ($normalized === 'in_stock') {
+        $where[] = "i.stock_quantity > 0 AND i.stock_status = 'in_stock'";
+    } else {
+        $where[] = 'i.stock_status = :stock_status';
+        $params['stock_status'] = $normalized;
+    }
 }
 if ($filters['visibility'] === 'active') {
     $where[] = 'i.is_active = TRUE';
@@ -231,8 +238,12 @@ admin_render_header('Items', 'items');
                     <td><?php echo htmlspecialchars($item['category_title'] ?? '—'); ?></td>
                     <td>Rs. <?php echo number_format((float) $item['price'], 0); ?></td>
                     <td>
-                        <span class="admin-stock-badge admin-stock-badge--<?php echo htmlspecialchars(store_normalize_stock_status($item['stock_status'] ?? 'in_stock')); ?>">
-                            <?php echo htmlspecialchars(store_stock_label(store_normalize_stock_status($item['stock_status'] ?? 'in_stock'))); ?>
+                        <?php $itemStock = store_item_effective_stock($item); ?>
+                        <span class="admin-stock-badge admin-stock-badge--<?php echo htmlspecialchars($itemStock['stock_status']); ?>">
+                            <?php echo htmlspecialchars($itemStock['stock_label']); ?>
+                            <?php if ($itemStock['stock_status'] === 'in_stock'): ?>
+                            <span class="admin-stock-qty">(<?php echo (int) $itemStock['stock_quantity']; ?>)</span>
+                            <?php endif; ?>
                         </span>
                     </td>
                     <td><?php echo !empty($item['is_active']) ? 'Active' : 'Hidden'; ?></td>

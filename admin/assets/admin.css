@@ -391,6 +391,11 @@
     color: var(--admin-error-text);
 }
 
+.admin-stock-qty {
+    font-weight: 500;
+    opacity: 0.85;
+}
+
 .admin-stock-badge--pre_order {
     background: var(--admin-accent-soft);
     color: var(--admin-accent);
@@ -648,6 +653,17 @@
 
 .admin-sub-images--manage {
     margin-bottom: 24px;
+}
+
+.admin-existing-media {
+    margin-bottom: 20px;
+}
+
+.admin-existing-media .admin-sub-images__item span {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--admin-text-faint);
+    margin-top: 4px;
 }
 
 .admin-sub-images__item {

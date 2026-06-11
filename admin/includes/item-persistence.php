@@ -312,6 +312,132 @@ function admin_save_item_request(PDO $pdo, int $id, ?array $existingItem, array 
     return $id;
 }
 
+/**
+ * Find an existing catalog item by category + brand + model (and RAM/ROM for phones).
+ */
+function admin_find_item_by_catalog(
+    PDO $pdo,
+    int $categoryId,
+    int $brandId,
+    int $modelId,
+    bool $isPhone,
+    string $ram = '',
+    string $rom = ''
+): int {
+    if ($categoryId <= 0 || $brandId <= 0 || $modelId <= 0) {
+        return 0;
+    }
+
+    if ($isPhone) {
+        $ram = trim($ram);
+        $rom = trim($rom);
+        if ($ram === '' && $rom === '') {
+            return 0;
+        }
+        $stmt = $pdo->prepare(
+            'SELECT i.id
+             FROM items i
+             INNER JOIN item_storage_variants sv ON sv.item_id = i.id
+             WHERE i.category_id = :cid AND i.brand_id = :bid AND i.model_id = :mid
+               AND COALESCE(i.is_preowned, FALSE) = FALSE
+               AND LOWER(TRIM(sv.ram)) = LOWER(:ram)
+               AND LOWER(TRIM(sv.rom)) = LOWER(:rom)
+             ORDER BY i.id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'cid' => $categoryId,
+            'bid' => $brandId,
+            'mid' => $modelId,
+            'ram' => $ram,
+            'rom' => $rom,
+        ]);
+    } else {
+        $stmt = $pdo->prepare(
+            'SELECT id FROM items
+             WHERE category_id = :cid AND brand_id = :bid AND model_id = :mid
+               AND COALESCE(is_preowned, FALSE) = FALSE
+               AND is_phone = FALSE
+             ORDER BY id DESC
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'cid' => $categoryId,
+            'bid' => $brandId,
+            'mid' => $modelId,
+        ]);
+    }
+
+    $found = $stmt->fetchColumn();
+
+    return $found ? (int) $found : 0;
+}
+
+/**
+ * @return array<string, mixed>|null
+ */
+function admin_item_lookup_payload(PDO $pdo, int $itemId): ?array
+{
+    if ($itemId <= 0) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare('SELECT * FROM items WHERE id = :id');
+    $stmt->execute(['id' => $itemId]);
+    $row = $stmt->fetch();
+    if (!$row) {
+        return null;
+    }
+
+    $specs = array_column(store_get_item_system_specs($itemId), 'text');
+    $variant = store_get_item_storage_variants($itemId)[0] ?? null;
+
+    $imgStmt = $pdo->prepare(
+        'SELECT id, image_path FROM item_images WHERE item_id = :id ORDER BY sort_order ASC, id ASC'
+    );
+    $imgStmt->execute(['id' => $itemId]);
+    $subImages = [];
+    foreach ($imgStmt->fetchAll() as $img) {
+        $subImages[] = [
+            'id' => (int) $img['id'],
+            'url' => upload_url($img['image_path']),
+        ];
+    }
+
+    $mainImageUrl = !empty($row['main_image']) ? upload_url($row['main_image']) : '';
+
+    return [
+        'id' => (int) $row['id'],
+        'name' => $row['name'],
+        'product_code' => $row['product_code'] ?? '',
+        'unit' => $row['unit'] ?? '',
+        'note' => $row['note'] ?? '',
+        'wholesale_price' => $row['wholesale_price'] ?? '',
+        'min_price' => $row['min_price'] ?? '',
+        'reorder_level' => (int) ($row['reorder_level'] ?? 5),
+        'price' => (float) ($row['price'] ?? 0),
+        'cost_price' => (float) ($row['cost_price'] ?? 0),
+        'stock_quantity' => (int) ($row['stock_quantity'] ?? 0),
+        'stock_status' => store_normalize_stock_status($row['stock_status'] ?? 'in_stock'),
+        'tag' => $row['tag'] ?? '',
+        'color' => $row['color'] ?? '#333333',
+        'sort_order' => (int) ($row['sort_order'] ?? 0),
+        'is_featured' => !empty($row['is_featured']),
+        'is_active' => !empty($row['is_active']),
+        'is_phone' => !empty($row['is_phone']),
+        'specs' => $specs,
+        'main_image_url' => $mainImageUrl,
+        'sub_images' => $subImages,
+        'variant' => $variant ? [
+            'ram' => $variant['ram'],
+            'rom' => $variant['rom'],
+            'price' => $variant['price'],
+            'cost_price' => $variant['cost_price'],
+            'stock_status' => $variant['stock_status'],
+        ] : null,
+    ];
+}
+
 function admin_apply_offer_to_item(PDO $pdo, int $itemId, float $listPrice, float $offerPrice, string $tag = 'Offer'): void
 {
     if ($itemId <= 0) {

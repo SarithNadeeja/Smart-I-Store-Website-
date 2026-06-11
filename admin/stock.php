@@ -55,20 +55,21 @@ admin_render_header('Stock Status', 'stock');
             </thead>
             <tbody>
                 <?php foreach ($items as $item): ?>
-                <?php
-                $currentStock = store_normalize_stock_status($item['stock_status'] ?? 'in_stock');
-                ?>
+                <?php $itemStock = store_item_effective_stock($item); ?>
                 <tr>
                     <td><?php echo htmlspecialchars($item['name']); ?></td>
                     <td><?php echo htmlspecialchars($item['brand_name'] ?? '—'); ?></td>
                     <td><?php echo htmlspecialchars($item['model_name'] ?? '—'); ?></td>
                     <td>
+                        <span class="admin-stock-badge admin-stock-badge--<?php echo htmlspecialchars($itemStock['stock_status']); ?>">
+                            <?php echo htmlspecialchars($itemStock['stock_label']); ?>
+                        </span>
                         <form method="post" class="admin-stock-form">
                             <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
                             <input type="hidden" name="item_id" value="<?php echo (int) $item['id']; ?>">
                             <select name="stock_status" class="admin-stock-select">
                                 <?php foreach ($statuses as $value => $label): ?>
-                                <option value="<?php echo htmlspecialchars($value); ?>"<?php echo $currentStock === $value ? ' selected' : ''; ?>>
+                                <option value="<?php echo htmlspecialchars($value); ?>"<?php echo $itemStock['stock_status'] === $value ? ' selected' : ''; ?>>
                                     <?php echo htmlspecialchars($label); ?>
                                 </option>
                                 <?php endforeach; ?>

@@ -61,6 +61,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $isUpdate = $id > 0;
 
+        if ($id <= 0) {
+            $lookupCategoryId = (int) ($_POST['category_id'] ?? 0);
+            $lookupBrandId = (int) ($_POST['brand_id'] ?? 0);
+            $lookupModelId = (int) ($_POST['model_id'] ?? 0);
+            $lookupIsPhone = store_category_is_phone($lookupCategoryId);
+            $foundId = admin_find_item_by_catalog(
+                $pdo,
+                $lookupCategoryId,
+                $lookupBrandId,
+                $lookupModelId,
+                $lookupIsPhone,
+                trim((string) ($_POST['phone_variant_ram'] ?? '')),
+                trim((string) ($_POST['phone_variant_rom'] ?? ''))
+            );
+            if ($foundId > 0) {
+                $id = $foundId;
+                $stmt = $pdo->prepare('SELECT * FROM items WHERE id = :id');
+                $stmt->execute(['id' => $id]);
+                $item = $stmt->fetch() ?: null;
+                $isUpdate = $item !== null;
+            }
+        }
+
         $id = admin_save_item_request($pdo, $id, $item, ['manage_offer' => false]);
 
         $subFiles = uploads_collect_files($_FILES['sub_images'] ?? []);
@@ -123,9 +146,12 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
     <form method="post" enctype="multipart/form-data" class="admin-form" id="item-form"
           action="<?php echo htmlspecialchars(admin_url('item-form.php' . ($id > 0 ? '?id=' . $id : ''))); ?>">
         <?php admin_csrf_field(); ?>
-        <?php if ($id > 0): ?>
-        <input type="hidden" name="item_id" value="<?php echo (int) $id; ?>">
-        <?php endif; ?>
+        <input type="hidden" name="item_id" id="item_id" value="<?php echo (int) $id; ?>">
+
+        <div class="admin-alert admin-alert--success" id="existing-item-notice" hidden>
+            This product already exists — fields below were filled from the saved listing. Saving will <strong>update</strong> it, not create a duplicate.
+        </div>
+        <div class="admin-existing-media" id="existing-item-media" hidden></div>
 
         <div class="admin-field">
             <label for="category_id">Category</label>
@@ -366,7 +392,7 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
         </label>
 
         <div class="admin-form-actions">
-            <button type="submit" class="btn btn-primary"><?php echo $item ? 'Update item' : 'Create item'; ?></button>
+            <button type="submit" class="btn btn-primary" id="item-submit-btn"><?php echo $item ? 'Update item' : 'Create item'; ?></button>
             <a href="<?php echo admin_url('items.php'); ?>" class="btn btn-ghost">Back to list</a>
         </div>
     </form>
@@ -579,6 +605,174 @@ admin_render_header($item ? 'Edit item' : 'Add item', 'items');
 
     if (addSpecBtn) addSpecBtn.addEventListener('click', addSpecRow);
     bindRemoveButtons(specRows);
+
+    var isEditPage = <?php echo $id > 0 ? 'true' : 'false'; ?>;
+    var catalogLookupUrl = <?php echo json_encode(admin_url('api/item-catalog-lookup.php'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+    var itemIdInput = document.getElementById('item_id');
+    var existingNotice = document.getElementById('existing-item-notice');
+    var existingMedia = document.getElementById('existing-item-media');
+    var submitBtn = document.getElementById('item-submit-btn');
+    var linkedItemId = isEditPage ? <?php echo (int) $id; ?> : 0;
+    var lookupTimer = null;
+
+    function setFieldValue(id, value) {
+        var el = document.getElementById(id);
+        if (el) el.value = value != null ? String(value) : '';
+    }
+
+    function setCheckbox(id, checked) {
+        var el = document.getElementById(id);
+        if (el) el.checked = !!checked;
+    }
+
+    function clearSpecRows() {
+        if (!specRows) return;
+        specRows.innerHTML = '';
+    }
+
+    function fillSpecRows(lines) {
+        clearSpecRows();
+        if (!lines || !lines.length) return;
+        lines.forEach(function (text) {
+            addSpecRow();
+            var inputs = specRows.querySelectorAll('input[name="phone_spec_text[]"]');
+            if (inputs.length) {
+                inputs[inputs.length - 1].value = text;
+            }
+        });
+    }
+
+    function renderExistingMedia(item) {
+        if (!existingMedia) return;
+        existingMedia.innerHTML = '';
+        if (!item.main_image_url && (!item.sub_images || !item.sub_images.length)) {
+            existingMedia.hidden = true;
+            return;
+        }
+        var html = '<p class="admin-field-note"><strong>Saved images</strong> — kept unless you upload new ones.</p><div class="admin-sub-images admin-sub-images--manage">';
+        if (item.main_image_url) {
+            html += '<div class="admin-sub-images__item"><img src="' + item.main_image_url + '" alt="Main image"><span>Main</span></div>';
+        }
+        (item.sub_images || []).forEach(function (img) {
+            html += '<div class="admin-sub-images__item"><img src="' + img.url + '" alt=""></div>';
+        });
+        html += '</div>';
+        existingMedia.innerHTML = html;
+        existingMedia.hidden = false;
+    }
+
+    function applyExistingItem(item) {
+        linkedItemId = item.id;
+        if (itemIdInput) itemIdInput.value = String(item.id);
+        if (existingNotice) existingNotice.hidden = false;
+        if (submitBtn) submitBtn.textContent = 'Update item';
+
+        setFieldValue('name', item.name);
+        setFieldValue('product_code', item.product_code);
+        setFieldValue('unit', item.unit);
+        setFieldValue('note', item.note);
+        setFieldValue('wholesale_price', item.wholesale_price !== '' && item.wholesale_price != null ? item.wholesale_price : '');
+        setFieldValue('min_price', item.min_price !== '' && item.min_price != null ? item.min_price : '');
+        setFieldValue('reorder_level', item.reorder_level);
+        setFieldValue('price', item.price);
+        setFieldValue('cost_price', item.cost_price);
+        setFieldValue('stock_quantity', item.stock_quantity);
+        setFieldValue('tag', item.tag);
+        setFieldValue('color', item.color || '#333333');
+        setFieldValue('sort_order', item.sort_order);
+        setFieldValue('stock_status', item.stock_status);
+        setCheckbox('is_featured', item.is_featured);
+        setCheckbox('is_active', item.is_active);
+
+        if (item.variant) {
+            setFieldValue('phone_variant_ram', item.variant.ram);
+            setFieldValue('phone_variant_rom', item.variant.rom);
+            setFieldValue('phone_variant_price', item.variant.price != null ? item.variant.price : '');
+            setFieldValue('phone_variant_cost', item.variant.cost_price);
+            setFieldValue('phone_variant_quantity', item.stock_quantity);
+            setFieldValue('phone_variant_stock', item.variant.stock_status);
+        }
+
+        fillSpecRows(item.specs || []);
+        renderExistingMedia(item);
+        syncPhoneVariantsVisibility();
+    }
+
+    function clearExistingItemLink() {
+        if (isEditPage) return;
+        linkedItemId = 0;
+        if (itemIdInput) itemIdInput.value = '0';
+        if (existingNotice) existingNotice.hidden = true;
+        if (existingMedia) {
+            existingMedia.innerHTML = '';
+            existingMedia.hidden = true;
+        }
+        if (submitBtn) submitBtn.textContent = 'Create item';
+    }
+
+    function categoryIsPhone() {
+        if (!categorySelect) return false;
+        var opt = categorySelect.options[categorySelect.selectedIndex];
+        return !!(opt && opt.getAttribute('data-is-phone') === '1');
+    }
+
+    function lookupExistingItem() {
+        if (isEditPage) return;
+        var catId = categorySelect ? categorySelect.value : '';
+        var brandId = brandSelect ? brandSelect.value : '';
+        var modelId = modelSelect ? modelSelect.value : '';
+        if (!catId || !brandId || !modelId) {
+            clearExistingItemLink();
+            return;
+        }
+
+        var params = new URLSearchParams({
+            category_id: catId,
+            brand_id: brandId,
+            model_id: modelId
+        });
+        if (categoryIsPhone()) {
+            var ramEl = document.getElementById('phone_variant_ram');
+            var romEl = document.getElementById('phone_variant_rom');
+            var ram = ramEl ? ramEl.value.trim() : '';
+            var rom = romEl ? romEl.value.trim() : '';
+            if (!ram && !rom) {
+                clearExistingItemLink();
+                return;
+            }
+            params.set('ram', ram);
+            params.set('rom', rom);
+        }
+
+        fetch(catalogLookupUrl + '?' + params.toString(), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok || !data.found || !data.item) {
+                    clearExistingItemLink();
+                    return;
+                }
+                applyExistingItem(data.item);
+            })
+            .catch(function () {
+                clearExistingItemLink();
+            });
+    }
+
+    function scheduleLookup() {
+        if (isEditPage) return;
+        clearTimeout(lookupTimer);
+        lookupTimer = setTimeout(lookupExistingItem, 250);
+    }
+
+    if (!isEditPage) {
+        if (categorySelect) categorySelect.addEventListener('change', scheduleLookup);
+        if (brandSelect) brandSelect.addEventListener('change', scheduleLookup);
+        if (modelSelect) modelSelect.addEventListener('change', scheduleLookup);
+        ['phone_variant_ram', 'phone_variant_rom'].forEach(function (fieldId) {
+            var el = document.getElementById(fieldId);
+            if (el) el.addEventListener('input', scheduleLookup);
+        });
+    }
 })();
 </script>
 <?php
