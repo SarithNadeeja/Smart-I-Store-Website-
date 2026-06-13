@@ -1,7 +1,7 @@
 <?php
 
 /** Bump when upload handler changes — visible in admin errors. */
-define('UPLOADS_HANDLER_VERSION', '20250611a');
+define('UPLOADS_HANDLER_VERSION', '20250611b');
 
 /** WebP output quality (0–100) for converted admin uploads */
 define('UPLOADS_WEBP_QUALITY', 82);
@@ -377,7 +377,55 @@ function uploads_store_failure_detail(string $tmp, string $dest, array $steps = 
 }
 
 /**
- * Convert a stored image (PNG, JPG, JPEG, HEIC, GIF) to WebP. Already-WebP files are kept as-is.
+ * Load an image resource with GD (mime, extension, then raw bytes).
+ *
+ * @return \GdImage|resource|false
+ */
+function uploads_gd_load_image(string $sourcePath, string $mime, string $ext)
+{
+    if (!function_exists('imagecreatefromjpeg')) {
+        return false;
+    }
+
+    $resource = false;
+    if ($mime === 'image/jpeg' || $mime === 'image/pjpeg' || $ext === 'jpg' || $ext === 'jpeg') {
+        $resource = @imagecreatefromjpeg($sourcePath);
+    } elseif ($mime === 'image/png' || $mime === 'image/x-png' || $ext === 'png') {
+        $resource = @imagecreatefrompng($sourcePath);
+    } elseif ($mime === 'image/gif' || $ext === 'gif') {
+        $resource = @imagecreatefromgif($sourcePath);
+    } elseif ($mime === 'image/webp' || $ext === 'webp') {
+        $resource = function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($sourcePath) : false;
+    }
+
+    if ($resource === false && function_exists('imagecreatefromstring')) {
+        $data = @file_get_contents($sourcePath);
+        if ($data !== false && $data !== '') {
+            $resource = @imagecreatefromstring($data);
+        }
+    }
+
+    return $resource !== false ? $resource : false;
+}
+
+/**
+ * @param \GdImage|resource $resource
+ * @return \GdImage|resource
+ */
+function uploads_gd_prepare_for_webp($resource)
+{
+    if (function_exists('imagepalettetotruecolor') && !imageistruecolor($resource)) {
+        imagepalettetotruecolor($resource);
+    }
+    imagealphablending($resource, true);
+    imagesavealpha($resource, true);
+
+    return $resource;
+}
+
+/**
+ * Convert a stored image (PNG, JPG, JPEG, HEIC, GIF) to WebP when supported.
+ * Falls back to the original file for JPG/PNG/GIF if WebP is unavailable on the server.
  */
 function uploads_convert_to_webp(string $sourcePath): string
 {
@@ -419,19 +467,10 @@ function uploads_convert_to_webp(string $sourcePath): string
     if (function_exists('imagewebp')) {
         $imageInfo = @getimagesize($sourcePath);
         $mime = is_array($imageInfo) ? (string) ($imageInfo['mime'] ?? '') : '';
-        $resource = match ($mime) {
-            'image/jpeg', 'image/pjpeg' => @imagecreatefromjpeg($sourcePath),
-            'image/png', 'image/x-png' => @imagecreatefrompng($sourcePath),
-            'image/gif' => @imagecreatefromgif($sourcePath),
-            'image/webp' => @imagecreatefromwebp($sourcePath),
-            default => false,
-        };
+        $resource = uploads_gd_load_image($sourcePath, $mime, $ext);
 
         if ($resource !== false) {
-            if (in_array($mime, ['image/png', 'image/x-png', 'image/gif'], true)) {
-                imagealphablending($resource, true);
-                imagesavealpha($resource, true);
-            }
+            $resource = uploads_gd_prepare_for_webp($resource);
             $saved = @imagewebp($resource, $destPath, UPLOADS_WEBP_QUALITY);
             imagedestroy($resource);
             clearstatcache(true, $destPath);
@@ -441,12 +480,26 @@ function uploads_convert_to_webp(string $sourcePath): string
                 }
                 return $destPath;
             }
+            uploads_log_error('GD imagewebp failed for ' . $sourcePath . ' mime=' . $mime);
+        } else {
+            uploads_log_error('GD could not load image for WebP: ' . $sourcePath . ' mime=' . $mime);
         }
     }
 
+    // Server has no working WebP encoder — keep JPG/PNG/GIF so uploads still succeed.
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+        uploads_log_error(
+            'WebP conversion skipped (GD WebP or Imagick not available on server); kept original .'
+            . $ext
+            . ' file. Enable php_gd2 WebP in php.ini or install Imagick for automatic WebP.'
+        );
+
+        return $sourcePath;
+    }
+
     uploads_fail(
-        'Could not convert image to WebP.',
-        'Enable PHP GD with WebP support, or install Imagick (required for HEIC). Original format: ' . $ext . '.'
+        'Could not convert HEIC image to WebP.',
+        'Install PHP Imagick with HEIC support on the server, or upload JPG/PNG instead.'
     );
 }
 
