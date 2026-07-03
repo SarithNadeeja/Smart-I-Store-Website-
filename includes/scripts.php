@@ -7,5 +7,7 @@ if (!empty($extra_js)) {
     }
 }
 ?>
+<script>window.SITE_SEARCH_API = <?php echo json_encode(base_url('api/search.php'), JSON_UNESCAPED_UNICODE); ?>;</script>
+<script src="<?php echo asset_url('js/site-search.js'); ?>"></script>
 <script src="<?php echo asset_url('js/main.js'); ?>"></script>
 <script src="<?php echo asset_url('js/store-bot.js'); ?>"></script>

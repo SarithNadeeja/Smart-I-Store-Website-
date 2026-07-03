@@ -28,6 +28,7 @@ if ($showOfferAd && $offerDiscount <= 0 && !empty($phone['on_sale'])) {
 $hasImage = !empty($phone['image']);
 $imgUrl = $hasImage ? upload_url($phone['image']) : '';
 $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
+$searchBlob = htmlspecialchars(store_item_search_blob($phone), ENT_QUOTES, 'UTF-8');
 ?>
 <article class="product-card glass-card reveal-up<?php echo $cardHidden ? ' is-hidden' : ''; ?>"
          data-brand="<?php echo $brandAttr; ?>"
@@ -37,6 +38,8 @@ $detailUrl = page_url('product.php?id=' . (int) ($phone['id'] ?? 0));
          data-stock="<?php echo htmlspecialchars($stockStatus, ENT_QUOTES, 'UTF-8'); ?>"
          data-category-id="<?php echo $categoryId; ?>"
          data-price="<?php echo (float) ($phone['price'] ?? 0); ?>"
+         data-search="<?php echo $searchBlob; ?>"
+         <?php if ($showPreowned): ?>data-preowned-condition="<?php echo htmlspecialchars(store_normalize_preowned_condition($phone['preowned_condition'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>"<?php endif; ?>
          data-delay="<?php echo $delay; ?>">
     <?php if ($showPreowned && $preownedConditionLabel !== ''): ?>
     <span class="product-preowned-label">Pre-Owned</span>

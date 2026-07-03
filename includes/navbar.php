@@ -34,7 +34,30 @@ $nav_links = [
                 </li>
                 <?php endforeach; ?>
             </ul>
+            <div class="header-search-mobile">
+                <?php
+                $site_search_id = 'header-search-mobile';
+                $site_search_scope = 'all';
+                $site_search_variant = 'compact';
+                $site_search_action = page_url('products.php');
+                $site_search_q = trim($_GET['q'] ?? '');
+                $site_search_autocomplete = true;
+                require __DIR__ . '/site-search.php';
+                ?>
+            </div>
         </nav>
+
+        <div class="header-search-desktop">
+            <?php
+            $site_search_id = 'header-search';
+            $site_search_scope = 'all';
+            $site_search_variant = 'compact';
+            $site_search_action = page_url('products.php');
+            $site_search_q = trim($_GET['q'] ?? '');
+            $site_search_autocomplete = true;
+            require __DIR__ . '/site-search.php';
+            ?>
+        </div>
 
         <div class="header-actions">
             <?php $social_class = 'social-links social-links--header'; require __DIR__ . '/social-links.php'; ?>

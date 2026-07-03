@@ -42,6 +42,7 @@ $body_class = 'page-home';
 $extra_js = [
     asset_url('js/category-carousel.js'),
     asset_url('js/hero-mobile-slides.js'),
+    asset_url('js/contact-whatsapp.js'),
 ];
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/products-data.php';
@@ -51,6 +52,27 @@ require_once __DIR__ . '/includes/navbar.php';
 
 <main>
     <?php require_once __DIR__ . '/includes/hero-experience.php'; ?>
+
+    <section class="home-search section section-white" id="search" aria-label="Search products">
+        <div class="container">
+            <div class="home-search__inner reveal-up">
+                <div class="home-search__copy">
+                    <span class="section-label">Find it fast</span>
+                    <h2 class="section-title">Search our catalog</h2>
+                    <p class="section-desc">Look up new products and pre-owned phones — suggestions appear as you type.</p>
+                </div>
+                <?php
+                $site_search_id = 'home-search';
+                $site_search_scope = 'all';
+                $site_search_variant = 'hero';
+                $site_search_action = page_url('products.php');
+                $site_search_q = trim($_GET['q'] ?? '');
+                $site_search_autocomplete = true;
+                require __DIR__ . '/includes/site-search.php';
+                ?>
+            </div>
+        </div>
+    </section>
 
     <?php if (!empty($flagship_offers)): ?>
     <!-- Flagship offers (items with active promotional pricing) -->
@@ -161,22 +183,11 @@ require_once __DIR__ . '/includes/navbar.php';
                     </li>
                 </ul>
             </div>
-            <form class="contact-form glass-card reveal-up" action="<?php echo page_url('contact.php'); ?>" method="get">
-                <h3 class="form-title">Send a Message</h3>
-                <div class="form-group">
-                    <label for="name">Full Name</label>
-                    <input type="text" id="name" name="name" placeholder="John Doe" required>
-                </div>
-                <div class="form-group">
-                    <label for="email">Email</label>
-                    <input type="email" id="email" name="email" placeholder="you@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="message">Message</label>
-                    <textarea id="message" name="message" rows="4" placeholder="How can we help?" required></textarea>
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Send Message</button>
-            </form>
+            <?php
+            $contact_form_title = 'Send a Message';
+            $contact_form_id_prefix = 'home-contact';
+            require __DIR__ . '/includes/contact-whatsapp-form.php';
+            ?>
             <?php require __DIR__ . '/includes/map-embed.php'; ?>
 
         </div>

@@ -277,6 +277,131 @@ function store_get_preowned_phones(): array
     return array_map('store_map_item_row', db()->query($sql)->fetchAll());
 }
 
+function store_sql_search_match(string $alias = 'i'): string
+{
+    return '(' . $alias . '.name ILIKE :q OR ' . $alias . '.product_code ILIKE :q
+        OR b.name ILIKE :q OR m.name ILIKE :q
+        OR c.title ILIKE :q OR COALESCE(c.description, \'\') ILIKE :q)';
+}
+
+/**
+ * Search catalog items by name, code, brand, model, or category.
+ *
+ * @param array{scope?: string, limit?: int, available_only?: bool} $options
+ *   scope: products | preowned | all
+ */
+function store_search_items(string $q, array $options = []): array
+{
+    $q = trim($q);
+    if ($q === '' || !db_available()) {
+        return [];
+    }
+
+    $scope = $options['scope'] ?? 'products';
+    $limit = max(1, min(50, (int) ($options['limit'] ?? 24)));
+    $availableOnly = !empty($options['available_only']);
+
+    $sql = store_item_select_sql() . ' WHERE i.is_active = TRUE';
+    if ($scope === 'products') {
+        $sql .= ' AND' . store_sql_exclude_preowned();
+    } elseif ($scope === 'preowned') {
+        $sql .= ' AND i.is_preowned = TRUE';
+    }
+    if ($availableOnly) {
+        $sql .= " AND (i.stock_quantity > 0 OR i.stock_status = 'pre_order')";
+    }
+    $sql .= ' AND ' . store_sql_search_match();
+    $sql .= ' ORDER BY
+        CASE WHEN i.stock_quantity > 0 OR i.stock_status = \'pre_order\' THEN 0 ELSE 1 END,
+        CASE WHEN i.name ILIKE :qstart THEN 0 WHEN i.name ILIKE :q THEN 1 ELSE 2 END,
+        i.sort_order ASC, i.name ASC, i.id DESC
+        LIMIT :lim';
+
+    $stmt = db()->prepare($sql);
+    $stmt->bindValue(':q', '%' . $q . '%');
+    $stmt->bindValue(':qstart', $q . '%');
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+
+    return array_map('store_map_item_row', $stmt->fetchAll());
+}
+
+/** Plain-text price for search UI / JSON (no HTML). */
+function store_format_price_plain(float $currentPrice, ?float $listPrice = null, string $prefix = ''): string
+{
+    $showSale = $listPrice !== null && $listPrice > $currentPrice;
+    $text = $prefix !== '' ? $prefix : '';
+    if ($showSale) {
+        $text .= 'Rs. ' . number_format($currentPrice, 0);
+    } else {
+        $text .= 'Rs. ' . number_format($currentPrice, 0);
+    }
+
+    return $text;
+}
+
+/**
+ * Autocomplete payload for live search (home + header).
+ *
+ * @return list<array<string, mixed>>
+ */
+function store_search_suggestions(string $q, string $scope = 'all', int $limit = 8): array
+{
+    $rows = store_search_items($q, [
+        'scope' => $scope,
+        'limit' => $limit,
+        'available_only' => true,
+    ]);
+
+    $out = [];
+    foreach ($rows as $row) {
+        $stock = store_item_effective_stock($row);
+        $isPreowned = !empty($row['is_preowned']);
+        $current = (float) ($row['current_price'] ?? $row['price'] ?? 0);
+        $list = !empty($row['on_sale']) ? (float) ($row['list_price'] ?? $row['price'] ?? 0) : null;
+        $prefix = !empty($row['price_from']) ? 'From ' : '';
+        $image = !empty($row['image']) ? upload_url($row['image']) : '';
+        $meta = trim(($row['brand'] ?? '') . ($row['meta'] ? ' · ' . $row['meta'] : ''));
+
+        $out[] = [
+            'id' => (int) ($row['id'] ?? 0),
+            'name' => $row['name'] ?? '',
+            'meta' => $meta,
+            'price' => $current,
+            'price_label' => store_format_price_plain($current, $list, $prefix),
+            'image' => $image,
+            'url' => page_url('product.php?id=' . (int) ($row['id'] ?? 0)),
+            'scope' => $isPreowned ? 'preowned' : 'products',
+            'scope_label' => $isPreowned ? 'Pre-Owned' : 'Product',
+            'stock_status' => $stock['stock_status'],
+            'in_stock' => $stock['stock_status'] === 'in_stock' || $stock['stock_status'] === 'pre_order',
+        ];
+    }
+
+    return $out;
+}
+
+function store_item_search_blob(array $item): string
+{
+    return mb_strtolower(trim(
+        ($item['name'] ?? '') . ' '
+        . ($item['brand'] ?? '') . ' '
+        . ($item['model'] ?? '') . ' '
+        . ($item['meta'] ?? '') . ' '
+        . ($item['product_code'] ?? '')
+    ));
+}
+
+function store_item_matches_search(array $item, string $q): bool
+{
+    $q = mb_strtolower(trim($q));
+    if ($q === '') {
+        return true;
+    }
+
+    return str_contains(store_item_search_blob($item), $q);
+}
+
 function store_format_price_display(float $currentPrice, ?float $listPrice = null, string $prefix = ''): string
 {
     $showSale = $listPrice !== null && $listPrice > $currentPrice;

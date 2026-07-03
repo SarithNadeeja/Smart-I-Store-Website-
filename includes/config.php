@@ -258,3 +258,29 @@ function whatsapp_order_url(string $number, string $message): string
     return whatsapp_url($number) . '?text=' . rawurlencode($message);
 }
 
+/** Pre-filled WhatsApp message from the site contact form. */
+function contact_whatsapp_message(string $name, string $message): string
+{
+    $name = trim($name);
+    $message = trim($message);
+    $lines = ['Hi ' . SITE_NAME . '!'];
+
+    if ($name !== '') {
+        $lines[] = '';
+        $lines[] = "I'm " . $name . '.';
+    }
+    if ($message !== '') {
+        $lines[] = '';
+        $lines[] = $message;
+    }
+
+    return implode("\n", $lines);
+}
+
+function contact_whatsapp_url(string $name, string $message, ?string $number = null): string
+{
+    $number = $number ?? SITE_WHATSAPP_1;
+
+    return whatsapp_order_url($number, contact_whatsapp_message($name, $message));
+}
+

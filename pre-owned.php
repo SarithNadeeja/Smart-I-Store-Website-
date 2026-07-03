@@ -13,13 +13,17 @@ $conditions = store_preowned_conditions();
 $active_brand = trim($_GET['brand'] ?? '');
 $active_condition = store_normalize_preowned_condition($_GET['condition'] ?? '');
 $active_sort = trim($_GET['sort'] ?? '');
+$active_q = trim($_GET['q'] ?? '');
 
-function preowned_passes_filters(array $phone, string $brand, string $condition): bool
+function preowned_passes_filters(array $phone, string $brand, string $condition, string $q = ''): bool
 {
     if ($brand !== '' && trim($phone['brand'] ?? '') !== $brand) {
         return false;
     }
     if ($condition !== '' && store_normalize_preowned_condition($phone['preowned_condition'] ?? '') !== $condition) {
+        return false;
+    }
+    if ($q !== '' && !store_item_matches_search($phone, $q)) {
         return false;
     }
     return true;
@@ -34,8 +38,8 @@ foreach ($all_phones as $phone) {
 }
 sort($brands);
 
-$phones = array_values(array_filter($all_phones, static function (array $phone) use ($active_brand, $active_condition): bool {
-    return preowned_passes_filters($phone, $active_brand, $active_condition);
+$phones = array_values(array_filter($all_phones, static function (array $phone) use ($active_brand, $active_condition, $active_q): bool {
+    return preowned_passes_filters($phone, $active_brand, $active_condition, $active_q);
 }));
 
 if ($active_sort === 'price_asc') {
@@ -58,7 +62,19 @@ if ($active_sort === 'price_asc') {
         <div class="container">
             <?php if ($all_phones): ?>
             <div class="products-filter-stack reveal-up">
+                <?php
+                $site_search_id = 'preowned-search';
+                $site_search_scope = 'preowned';
+                $site_search_variant = 'inline';
+                $site_search_action = page_url('pre-owned.php');
+                $site_search_q = $active_q;
+                $site_search_autocomplete = false;
+                $site_search_live_filter = true;
+                require __DIR__ . '/includes/site-search.php';
+                ?>
+
                 <form method="get" class="product-filters" id="preowned-filters">
+                    <input type="hidden" name="q" id="preowned-filter-q" value="<?php echo htmlspecialchars($active_q, ENT_QUOTES, 'UTF-8'); ?>">
                     <div class="product-filters__row">
                         <div class="product-filters__group product-filters__group--select">
                             <label class="product-filters__label" for="filter-brand">Brand</label>
@@ -92,7 +108,7 @@ if ($active_sort === 'price_asc') {
                         </div>
                         <div class="product-filters__group product-filters__group--actions">
                             <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-                            <?php if ($active_brand !== '' || $active_condition !== '' || $active_sort !== ''): ?>
+                            <?php if ($active_brand !== '' || $active_condition !== '' || $active_sort !== '' || $active_q !== ''): ?>
                             <a href="<?php echo page_url('pre-owned.php'); ?>" class="btn btn-ghost btn-sm">Clear</a>
                             <?php endif; ?>
                         </div>
@@ -101,13 +117,18 @@ if ($active_sort === 'price_asc') {
             </div>
             <?php endif; ?>
 
+            <p class="products-empty-filter section-desc" id="preowned-empty-filter" hidden>
+                No pre-owned phones match your search or filters.
+            </p>
+
             <div class="product-grid product-grid-page" id="preowned-grid">
-                <?php if ($phones): ?>
-                <?php foreach ($phones as $i => $phone): ?>
+                <?php if ($all_phones): ?>
+                <?php foreach ($all_phones as $i => $phone): ?>
                 <?php
                 $product_card_preowned = true;
+                $product_card_hidden = !preowned_passes_filters($phone, $active_brand, $active_condition, $active_q);
                 include __DIR__ . '/includes/product-card.php';
-                unset($product_card_preowned);
+                unset($product_card_preowned, $product_card_hidden);
                 ?>
                 <?php endforeach; ?>
                 <?php else: ?>

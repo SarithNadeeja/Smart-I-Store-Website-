@@ -39,7 +39,17 @@
         model: '',
         stock: '',
         sort: '',
+        q: '',
     };
+
+    function normalizeQuery(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function getSearchInput() {
+        var searchForm = document.getElementById('products-search');
+        return searchForm ? searchForm.querySelector('.site-search__input') : null;
+    }
 
     function readUrlState() {
         var params = new URLSearchParams(window.location.search);
@@ -53,6 +63,11 @@
         state.model = params.get('model') || '';
         state.stock = params.get('stock') || '';
         state.sort = params.get('sort') || (sortSelect ? sortSelect.value : '');
+        state.q = normalizeQuery(params.get('q') || '');
+        var searchInput = getSearchInput();
+        if (searchInput && state.q && !searchInput.value) {
+            searchInput.value = params.get('q') || '';
+        }
     }
 
     function cardsInScope(category, brand) {
@@ -210,6 +225,12 @@
         if (state.stock && stock !== state.stock) {
             return false;
         }
+        if (state.q) {
+            var blob = (card.getAttribute('data-search') || '').toLowerCase();
+            if (blob.indexOf(state.q) === -1) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -243,8 +264,25 @@
         if (!filterClearBtn) {
             return;
         }
-        var hasSecondary = state.brand || state.model || state.stock || state.sort;
+        var hasSecondary = state.brand || state.model || state.stock || state.sort || state.q;
         filterClearBtn.hidden = !hasSecondary;
+    }
+
+    function syncSearchInputFromState() {
+        var searchInput = getSearchInput();
+        if (!searchInput) {
+            return;
+        }
+        if (!state.q) {
+            searchInput.value = '';
+        }
+        var searchForm = document.getElementById('products-search');
+        if (searchForm) {
+            var clearBtn = searchForm.querySelector('.site-search__clear');
+            if (clearBtn) {
+                clearBtn.hidden = !state.q && searchInput.value.trim() === '';
+            }
+        }
     }
 
     function syncUrl() {
@@ -276,6 +314,11 @@
             url.searchParams.set('sort', state.sort);
         } else {
             url.searchParams.delete('sort');
+        }
+        if (state.q) {
+            url.searchParams.set('q', state.q);
+        } else {
+            url.searchParams.delete('q');
         }
         window.history.replaceState({}, '', url.pathname + url.search + url.hash);
     }
@@ -361,12 +404,20 @@
             state.model = '';
             state.stock = '';
             state.sort = '';
+            state.q = '';
             if (sortSelect) {
                 sortSelect.value = '';
             }
+            syncSearchInputFromState();
             applyFilters(true);
         });
     }
+
+    document.addEventListener('site-search:filter', function (e) {
+        var detail = e.detail || {};
+        state.q = normalizeQuery(detail.q || '');
+        applyFilters(true);
+    });
 
     readUrlState();
     if (!state.brand) {
@@ -384,5 +435,6 @@
     if (stockSelect && state.stock) {
         stockSelect.value = state.stock;
     }
+    syncSearchInputFromState();
     applyFilters(false);
 })();

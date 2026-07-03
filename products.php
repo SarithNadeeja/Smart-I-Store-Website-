@@ -20,9 +20,10 @@ if ($active_brand === '') {
     $active_model = '';
 }
 $active_sort = trim($_GET['sort'] ?? '');
+$active_q = trim($_GET['q'] ?? '');
 $stock_labels = store_stock_statuses();
 
-function product_passes_filters(array $phone, int $category, string $brand, string $stock, string $model): bool
+function product_passes_filters(array $phone, int $category, string $brand, string $stock, string $model, string $q = ''): bool
 {
     if ($category > 0 && (int) ($phone['category_id'] ?? 0) !== $category) {
         return false;
@@ -34,6 +35,9 @@ function product_passes_filters(array $phone, int $category, string $brand, stri
         return false;
     }
     if ($model !== '' && trim($phone['model'] ?? '') !== $model) {
+        return false;
+    }
+    if ($q !== '' && !store_item_matches_search($phone, $q)) {
         return false;
     }
     return true;
@@ -52,6 +56,17 @@ function product_passes_filters(array $phone, int $category, string $brand, stri
     <section class="section section-white products-catalog">
         <div class="container">
             <div class="products-filter-stack reveal-up">
+                <?php
+                $site_search_id = 'products-search';
+                $site_search_scope = 'products';
+                $site_search_variant = 'inline';
+                $site_search_action = page_url('products.php');
+                $site_search_q = $active_q;
+                $site_search_autocomplete = false;
+                $site_search_live_filter = true;
+                require __DIR__ . '/includes/site-search.php';
+                ?>
+
                 <?php if ($categories): ?>
                 <nav class="category-subnav" id="category-subnav" aria-label="Product categories">
                     <a href="<?php echo page_url('products.php'); ?>"
@@ -109,7 +124,7 @@ function product_passes_filters(array $phone, int $category, string $brand, stri
             ?></script>
 
             <p class="products-empty-filter section-desc" id="products-empty-filter" hidden>
-                No products match your filters. Try another category or clear filters.
+                No products match your search or filters. Try another keyword or clear filters.
             </p>
 
             <div class="product-grid product-grid-page" id="product-grid">
@@ -121,7 +136,8 @@ function product_passes_filters(array $phone, int $category, string $brand, stri
                     $active_category,
                     $active_brand,
                     $active_stock,
-                    $active_model
+                    $active_model,
+                    $active_q
                 );
                 include __DIR__ . '/includes/product-card.php';
                 ?>
