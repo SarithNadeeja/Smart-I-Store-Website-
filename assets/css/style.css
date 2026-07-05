@@ -675,6 +675,15 @@ em, .hero-title em, .page-hero-title em {
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
 }
 
+.home-ad--static {
+    cursor: default;
+}
+
+.home-ad--static:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 .home-ad__image {
     display: block;
     width: 100%;

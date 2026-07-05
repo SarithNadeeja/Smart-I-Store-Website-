@@ -414,8 +414,8 @@ function store_get_site_advertisements(): array
                i.is_active AS item_is_active,
                i.main_image AS item_image
         FROM site_advertisements a
-        INNER JOIN items i ON i.id = a.item_id
-        WHERE a.is_active = TRUE AND i.is_active = TRUE AND a.image_path <> \'\'
+        LEFT JOIN items i ON i.id = a.item_id
+        WHERE a.is_active = TRUE AND a.image_path <> \'\'
         ORDER BY a.sort_order ASC, a.id DESC
     ';
 
@@ -424,13 +424,12 @@ function store_get_site_advertisements(): array
 
     foreach ($rows as $row) {
         $itemId = (int) ($row['item_id'] ?? 0);
-        if ($itemId <= 0) {
-            continue;
-        }
+        $itemActive = !empty($row['item_is_active']);
+        $hasLink = $itemId > 0 && $itemActive;
 
         $title = trim($row['title'] ?? '');
         if ($title === '') {
-            $title = trim($row['item_name'] ?? 'View product');
+            $title = trim($row['item_name'] ?? '') ?: 'Advertisement';
         }
 
         $out[] = [
@@ -440,7 +439,7 @@ function store_get_site_advertisements(): array
             'image_url' => !empty($row['image_path']) ? upload_url($row['image_path']) : '',
             'item_id' => $itemId,
             'item_name' => trim($row['item_name'] ?? ''),
-            'url' => page_url('product.php?id=' . $itemId),
+            'url' => $hasLink ? page_url('product.php?id=' . $itemId) : '',
             'sort_order' => (int) ($row['sort_order'] ?? 0),
         ];
     }

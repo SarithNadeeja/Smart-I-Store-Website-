@@ -12,7 +12,7 @@ if ($editId > 0) {
     $stmt = $pdo->prepare(
         'SELECT a.*, i.name AS item_name, i.main_image AS item_image
          FROM site_advertisements a
-         INNER JOIN items i ON i.id = a.item_id
+         LEFT JOIN items i ON i.id = a.item_id
          WHERE a.id = :id'
     );
     $stmt->execute(['id' => $editId]);
@@ -59,15 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $itemId = (int) ($_POST['item_id'] ?? 0);
             $sortOrder = (int) ($_POST['sort_order'] ?? 0);
             $isActive = isset($_POST['is_active']);
+            $linkedItemId = $itemId > 0 ? $itemId : null;
 
-            if ($itemId <= 0) {
-                throw new RuntimeException('Select a product to link this advertisement to.');
-            }
-
-            $itemCheck = $pdo->prepare('SELECT id FROM items WHERE id = :id AND is_active = TRUE');
-            $itemCheck->execute(['id' => $itemId]);
-            if (!$itemCheck->fetch()) {
-                throw new RuntimeException('Selected product is missing or inactive.');
+            if ($linkedItemId !== null) {
+                $itemCheck = $pdo->prepare('SELECT id FROM items WHERE id = :id AND is_active = TRUE');
+                $itemCheck->execute(['id' => $linkedItemId]);
+                if (!$itemCheck->fetch()) {
+                    throw new RuntimeException('Selected product is missing or inactive.');
+                }
             }
 
             $imagePath = '';
@@ -99,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([
                     't' => $title,
                     'img' => $imagePath,
-                    'iid' => $itemId,
+                    'iid' => $linkedItemId,
                     'ord' => $sortOrder,
                     'a' => db_bool($isActive),
                     'id' => $id,
@@ -113,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([
                     't' => $title,
                     'img' => $imagePath,
-                    'iid' => $itemId,
+                    'iid' => $linkedItemId,
                     'ord' => $sortOrder,
                     'a' => db_bool($isActive),
                 ]);
@@ -133,7 +132,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $ads = $pdo->query(
     'SELECT a.*, i.name AS item_name
      FROM site_advertisements a
-     INNER JOIN items i ON i.id = a.item_id
+     LEFT JOIN items i ON i.id = a.item_id
      ORDER BY a.sort_order ASC, a.id DESC'
 )->fetchAll();
 
@@ -142,7 +141,7 @@ admin_render_header('Advertisements', 'advertisements');
 <div class="admin-grid-2">
     <section class="admin-panel">
         <h2><?php echo $editRow ? 'Edit advertisement' : 'Add advertisement'; ?></h2>
-        <p class="admin-field-note">Upload a banner image and link it to a product. Clicking the ad on the website opens that product page.</p>
+        <p class="admin-field-note">Upload a banner image. Optionally link it to a product — when linked, clicking the ad opens that product page.</p>
 
         <form method="post" class="admin-form" enctype="multipart/form-data" id="ad-form">
             <input type="hidden" name="csrf" value="<?php echo htmlspecialchars(admin_csrf_token()); ?>">
@@ -167,13 +166,14 @@ admin_render_header('Advertisements', 'advertisements');
             </div>
 
             <div class="admin-field admin-item-picker">
-                <label for="ad-item-search">Linked product</label>
+                <label for="ad-item-search">Linked product (optional)</label>
                 <input type="search" id="ad-item-search" autocomplete="off"
                        placeholder="Type name, brand, model, or category…"
                        value="<?php echo $selectedPicker ? htmlspecialchars($selectedPicker['label']) : ''; ?>">
                 <input type="hidden" id="item_id" name="item_id"
-                       value="<?php echo (int) ($editRow['item_id'] ?? 0) ?: ''; ?>" required>
+                       value="<?php echo (int) ($editRow['item_id'] ?? 0) ?: ''; ?>">
                 <ul id="ad-item-results" class="admin-item-picker__results" hidden role="listbox" aria-label="Matching products"></ul>
+                <p class="admin-field-note">Leave empty to show the image only, without opening a product page.</p>
             </div>
 
             <div class="admin-item-picker__selected" id="ad-item-selected"<?php echo $selectedPicker ? '' : ' hidden'; ?>>
@@ -201,7 +201,7 @@ admin_render_header('Advertisements', 'advertisements');
             </label>
 
             <div class="admin-form-actions">
-                <button type="submit" class="btn btn-primary" id="ad-submit"<?php echo $selectedPicker ? '' : ' disabled'; ?>>
+                <button type="submit" class="btn btn-primary" id="ad-submit">
                     <?php echo $editRow ? 'Update' : 'Create'; ?>
                 </button>
                 <?php if ($editRow): ?>
@@ -236,7 +236,7 @@ admin_render_header('Advertisements', 'advertisements');
                             <img class="admin-preview admin-preview--sm" src="<?php echo htmlspecialchars(upload_url($ad['image_path'])); ?>" alt="">
                             <?php endif; ?>
                         </td>
-                        <td><?php echo htmlspecialchars($ad['item_name'] ?? ''); ?></td>
+                        <td><?php echo ($ad['item_name'] ?? '') !== '' ? htmlspecialchars($ad['item_name']) : '—'; ?></td>
                         <td><?php echo (int) ($ad['sort_order'] ?? 0); ?></td>
                         <td><?php echo !empty($ad['is_active']) ? 'Active' : 'Hidden'; ?></td>
                         <td class="admin-table__actions">
@@ -263,18 +263,11 @@ admin_render_header('Advertisements', 'advertisements');
     var itemIdInput = document.getElementById('item_id');
     var resultsEl = document.getElementById('ad-item-results');
     var selectedEl = document.getElementById('ad-item-selected');
-    var submitBtn = document.getElementById('ad-submit');
     var clearBtn = document.getElementById('ad-item-clear');
     var debounceTimer = null;
 
     if (!searchInput || !itemIdInput || !resultsEl) {
         return;
-    }
-
-    function setSubmitEnabled() {
-        if (submitBtn) {
-            submitBtn.disabled = !itemIdInput.value;
-        }
     }
 
     function hideResults() {
@@ -307,7 +300,6 @@ admin_render_header('Advertisements', 'advertisements');
         change.addEventListener('click', clearSelection);
         meta.appendChild(change);
         selectedEl.appendChild(meta);
-        setSubmitEnabled();
     }
 
     function clearSelection() {
@@ -316,7 +308,6 @@ admin_render_header('Advertisements', 'advertisements');
         selectedEl.hidden = true;
         selectedEl.innerHTML = '';
         searchInput.focus();
-        setSubmitEnabled();
     }
 
     if (clearBtn) {
@@ -368,8 +359,6 @@ admin_render_header('Advertisements', 'advertisements');
             hideResults();
         }
     });
-
-    setSubmitEnabled();
 })();
 </script>
 <?php

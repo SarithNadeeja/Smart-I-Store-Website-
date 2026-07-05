@@ -300,7 +300,7 @@ function db_migrate_site_advertisements(PDO $pdo): void
             id SERIAL PRIMARY KEY,
             title VARCHAR(200) NOT NULL DEFAULT '',
             image_path VARCHAR(255) NOT NULL DEFAULT '',
-            item_id INT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+            item_id INT REFERENCES items(id) ON DELETE SET NULL,
             sort_order INT NOT NULL DEFAULT 0,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -308,6 +308,8 @@ function db_migrate_site_advertisements(PDO $pdo): void
 
         CREATE INDEX IF NOT EXISTS idx_site_ads_active ON site_advertisements (is_active, sort_order, id);
     ");
+
+    $pdo->exec('ALTER TABLE site_advertisements ALTER COLUMN item_id DROP NOT NULL');
 }
 
 /** Scope product models to a category so e.g. watch models don't show for phones. */
