@@ -210,6 +210,37 @@ function uploads_dir(): string
     return uploads_normalize_path($dir);
 }
 
+function uploads_ads_dir(): string
+{
+    uploads_ensure_base_dir();
+    $dir = uploads_base_dir() . '/ads';
+
+    if (!is_dir($dir)) {
+        if (!@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            throw new RuntimeException(
+                'Advertisement upload folder could not be created (assets/uploads/ads).'
+            );
+        }
+        if (DIRECTORY_SEPARATOR === '\\') {
+            @chmod($dir, 0777);
+        }
+    }
+
+    if (!is_writable($dir)) {
+        @chmod($dir, 0775);
+    }
+
+    if (!is_writable($dir)) {
+        throw new RuntimeException(
+            'Advertisement upload folder is not writable (assets/uploads/ads).'
+        );
+    }
+
+    $real = realpath($dir);
+
+    return uploads_normalize_path($real !== false ? $real : $dir);
+}
+
 function uploads_allowed_image_types(): array
 {
     return [
@@ -672,6 +703,43 @@ function uploads_save_image(array $file): ?string
     $finalDest = uploads_convert_to_webp($dest);
 
     return 'items/' . basename($finalDest);
+}
+
+/** Save an advertisement banner image under assets/uploads/ads/. */
+function uploads_save_ad_image(array $file): ?string
+{
+    if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+
+    $error = (int) ($file['error'] ?? UPLOAD_ERR_OK);
+    if ($error !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('Advertisement image upload failed (code ' . $error . ').');
+    }
+
+    $size = (int) ($file['size'] ?? 0);
+    if ($size > UPLOAD_MAX_FILE_BYTES) {
+        throw new RuntimeException(
+            'Advertisement image is too large (max '
+            . (int) (UPLOAD_MAX_FILE_BYTES / 1024 / 1024)
+            . ' MB).'
+        );
+    }
+
+    if (trim((string) ($file['name'] ?? '')) === '') {
+        return null;
+    }
+
+    $extension = uploads_resolve_image_extension($file);
+    $name = bin2hex(random_bytes(8)) . '.' . $extension;
+    $dir = uploads_ads_dir();
+    $dest = $dir . DIRECTORY_SEPARATOR . $name;
+    $tmp = (string) ($file['tmp_name'] ?? '');
+
+    uploads_store_temp_file($tmp, $dest);
+    $finalDest = uploads_convert_to_webp($dest);
+
+    return 'ads/' . basename($finalDest);
 }
 
 /**

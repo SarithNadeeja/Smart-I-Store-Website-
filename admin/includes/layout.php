@@ -14,6 +14,7 @@ function admin_render_header(string $title, string $active = ''): void
         'models' => ['Model Management', 'models.php', 'models'],
         'items' => ['Add / Manage Items', 'items.php', 'items'],
         'offers' => ['Offers', 'offers.php', 'offers'],
+        'advertisements' => ['Advertisements', 'advertisements.php', 'advertisements'],
         'preowned' => ['Pre-Owned Phones', 'preowned.php', 'preowned'],
         'stock' => ['Stock Status', 'stock.php', 'stock'],
         'comments' => ['Customer Comments', 'comments.php', 'comments'],

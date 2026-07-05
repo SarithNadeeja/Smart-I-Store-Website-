@@ -402,6 +402,52 @@ function store_item_matches_search(array $item, string $q): bool
     return str_contains(store_item_search_blob($item), $q);
 }
 
+function store_get_site_advertisements(): array
+{
+    if (!db_available()) {
+        return [];
+    }
+
+    $sql = '
+        SELECT a.*,
+               i.name AS item_name,
+               i.is_active AS item_is_active,
+               i.main_image AS item_image
+        FROM site_advertisements a
+        INNER JOIN items i ON i.id = a.item_id
+        WHERE a.is_active = TRUE AND i.is_active = TRUE AND a.image_path <> \'\'
+        ORDER BY a.sort_order ASC, a.id DESC
+    ';
+
+    $rows = db()->query($sql)->fetchAll();
+    $out = [];
+
+    foreach ($rows as $row) {
+        $itemId = (int) ($row['item_id'] ?? 0);
+        if ($itemId <= 0) {
+            continue;
+        }
+
+        $title = trim($row['title'] ?? '');
+        if ($title === '') {
+            $title = trim($row['item_name'] ?? 'View product');
+        }
+
+        $out[] = [
+            'id' => (int) ($row['id'] ?? 0),
+            'title' => $title,
+            'image' => trim($row['image_path'] ?? ''),
+            'image_url' => !empty($row['image_path']) ? upload_url($row['image_path']) : '',
+            'item_id' => $itemId,
+            'item_name' => trim($row['item_name'] ?? ''),
+            'url' => page_url('product.php?id=' . $itemId),
+            'sort_order' => (int) ($row['sort_order'] ?? 0),
+        ];
+    }
+
+    return $out;
+}
+
 function store_format_price_display(float $currentPrice, ?float $listPrice = null, string $prefix = ''): string
 {
     $showSale = $listPrice !== null && $listPrice > $currentPrice;

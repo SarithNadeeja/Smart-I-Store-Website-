@@ -55,21 +55,24 @@ require_once __DIR__ . '/includes/navbar.php';
 
     <section class="home-search section section-white" id="search" aria-label="Search products">
         <div class="container">
-            <div class="home-search__inner reveal-up">
-                <div class="home-search__copy">
-                    <span class="section-label">Find it fast</span>
-                    <h2 class="section-title">Search our catalog</h2>
-                    <p class="section-desc">Look up new products and pre-owned phones — suggestions appear as you type.</p>
+            <div class="home-search__layout reveal-up">
+                <div class="home-search__main">
+                    <div class="home-search__copy">
+                        <span class="section-label">Find it fast</span>
+                        <h2 class="section-title">Search our catalog</h2>
+                        <p class="section-desc">Look up new products and pre-owned phones — suggestions appear as you type.</p>
+                    </div>
+                    <?php
+                    $site_search_id = 'home-search';
+                    $site_search_scope = 'all';
+                    $site_search_variant = 'hero';
+                    $site_search_action = page_url('products.php');
+                    $site_search_q = trim($_GET['q'] ?? '');
+                    $site_search_autocomplete = true;
+                    require __DIR__ . '/includes/site-search.php';
+                    ?>
                 </div>
-                <?php
-                $site_search_id = 'home-search';
-                $site_search_scope = 'all';
-                $site_search_variant = 'hero';
-                $site_search_action = page_url('products.php');
-                $site_search_q = trim($_GET['q'] ?? '');
-                $site_search_autocomplete = true;
-                require __DIR__ . '/includes/site-search.php';
-                ?>
+                <?php require __DIR__ . '/includes/home-advertisements.php'; ?>
             </div>
         </div>
     </section>

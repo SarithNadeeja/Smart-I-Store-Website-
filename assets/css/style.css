@@ -631,6 +631,16 @@ em, .hero-title em, .page-hero-title em {
     padding-bottom: 48px;
 }
 
+.home-search__layout {
+    display: grid;
+    gap: 28px;
+    align-items: start;
+}
+
+.home-search__main {
+    min-width: 0;
+}
+
 .home-search__inner {
     display: grid;
     gap: 24px;
@@ -642,6 +652,67 @@ em, .hero-title em, .page-hero-title em {
 
 .home-search .site-search {
     max-width: 760px;
+}
+
+.home-search__ads {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+
+.home-ad {
+    display: block;
+    overflow: hidden;
+    border-radius: var(--radius-lg, 16px);
+    text-decoration: none;
+    color: inherit;
+    transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.home-ad:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+}
+
+.home-ad__image {
+    display: block;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    background: var(--gray-100);
+}
+
+.home-ad__label {
+    display: block;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    border-top: 1px solid var(--gray-100);
+}
+
+@media (min-width: 992px) {
+    .home-search__layout {
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+        gap: 36px;
+    }
+}
+
+@media (max-width: 991px) {
+    .home-search__ads {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .home-ad {
+        flex: 1 1 160px;
+        max-width: 220px;
+    }
+
+    .home-ad__image {
+        aspect-ratio: 4 / 5;
+    }
 }
 
 .site-header--hero .header-search-desktop .site-search__field,

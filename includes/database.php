@@ -290,6 +290,24 @@ function db_migrate_upgrade(PDO $pdo): void
     db_migrate_pos_cloud($pdo);
     db_migrate_preowned($pdo);
     db_migrate_model_categories($pdo);
+    db_migrate_site_advertisements($pdo);
+}
+
+function db_migrate_site_advertisements(PDO $pdo): void
+{
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS site_advertisements (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(200) NOT NULL DEFAULT '',
+            image_path VARCHAR(255) NOT NULL DEFAULT '',
+            item_id INT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+            sort_order INT NOT NULL DEFAULT 0,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_site_ads_active ON site_advertisements (is_active, sort_order, id);
+    ");
 }
 
 /** Scope product models to a category so e.g. watch models don't show for phones. */
