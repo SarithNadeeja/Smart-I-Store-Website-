@@ -43,6 +43,7 @@ $extra_js = [
     asset_url('js/category-carousel.js'),
     asset_url('js/hero-mobile-slides.js'),
     asset_url('js/contact-whatsapp.js'),
+    asset_url('js/home-ads-slideshow.js'),
 ];
 require_once __DIR__ . '/includes/header.php';
 require_once __DIR__ . '/includes/products-data.php';

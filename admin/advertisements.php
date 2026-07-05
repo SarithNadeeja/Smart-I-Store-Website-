@@ -213,7 +213,7 @@ admin_render_header('Advertisements', 'advertisements');
 
     <section class="admin-panel">
         <h2>Home page ads</h2>
-        <p class="admin-field-note">Shown on the right of <strong>Search our catalog</strong> on the home page.</p>
+        <p class="admin-field-note">Shown below <strong>Search our catalog</strong> on the home page (4 ads per row, slideshow if you add more).</p>
         <?php if (!$ads): ?>
         <p class="admin-empty">No advertisements yet. Add one using the form.</p>
         <?php else: ?>
